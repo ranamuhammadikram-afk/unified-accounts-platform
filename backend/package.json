@@ -1,0 +1,21 @@
+{
+  "name": "unified-accounts-backend",
+  "version": "1.0.0",
+  "description": "Unified Accounts Platform - backend API",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node scripts/seed.js",
+    "import-legacy": "node scripts/import-legacy.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "pg": "^8.11.5"
+  }
+}
