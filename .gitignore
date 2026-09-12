@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.env
+backend/.env
+frontend/.env
+backend/CREDENTIALS_DO_NOT_COMMIT.txt
+backend/import-review.json
+legacy-data/
