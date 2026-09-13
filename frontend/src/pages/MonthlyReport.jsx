@@ -67,7 +67,8 @@ export default function MonthlyReport() {
 
     const dailyBody = data.dailyBreakdown.map((d) => [
       d.date,
-      fmt(d.sales),
+      fmt(d.salesCash),
+      fmt(d.salesCard),
       fmt(d.expense),
       fmt(d.fixedCost),
       fmt(d.salary),
@@ -75,8 +76,8 @@ export default function MonthlyReport() {
     ]);
     doc.autoTable({
       startY: doc.lastAutoTable.finalY + 10,
-      head: [["Date", "Sales", "Expenses", "Fixed", "Salary", "Net"]],
-      body: dailyBody.length ? dailyBody : [["No entries this month.", "", "", "", "", ""]],
+      head: [["Date", "Cash Sale", "Card Sale", "Expenses", "Fixed", "Salary", "Net"]],
+      body: dailyBody.length ? dailyBody : [["No entries this month.", "", "", "", "", "", ""]],
       theme: "striped",
       headStyles: { fillColor: [29, 111, 82] },
     });
@@ -105,10 +106,18 @@ export default function MonthlyReport() {
     ]);
     summarySheet["!cols"] = [{ wch: 20 }, { wch: 18 }];
 
-    const dailyHeader = ["Date", "Sales", "Expenses", "Fixed", "Salary", "Net"];
-    const dailyRows = data.dailyBreakdown.map((d) => [d.date, d.sales, d.expense, d.fixedCost, d.salary, d.net]);
+    const dailyHeader = ["Date", "Cash Sale", "Card Sale", "Expenses", "Fixed", "Salary", "Net"];
+    const dailyRows = data.dailyBreakdown.map((d) => [
+      d.date,
+      d.salesCash,
+      d.salesCard,
+      d.expense,
+      d.fixedCost,
+      d.salary,
+      d.net,
+    ]);
     const dailySheet = XLSX.utils.aoa_to_sheet([dailyHeader, ...dailyRows]);
-    dailySheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+    dailySheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
@@ -187,7 +196,8 @@ export default function MonthlyReport() {
                   <thead>
                     <tr>
                       <th>Date</th>
-                      <th className="num">Sales</th>
+                      <th className="num">Cash Sale</th>
+                      <th className="num">Card Sale</th>
                       <th className="num">Expenses</th>
                       <th className="num">Fixed</th>
                       <th className="num">Salary</th>
@@ -198,8 +208,11 @@ export default function MonthlyReport() {
                     {data.dailyBreakdown.map((d) => (
                       <tr key={d.date}>
                         <td data-label="Date">{d.date}</td>
-                        <td className="num" data-label="Sales">
-                          {fmt(d.sales)}
+                        <td className="num" data-label="Cash Sale">
+                          {fmt(d.salesCash)}
+                        </td>
+                        <td className="num" data-label="Card Sale">
+                          {fmt(d.salesCard)}
                         </td>
                         <td className="num" data-label="Expenses">
                           {fmt(d.expense)}
