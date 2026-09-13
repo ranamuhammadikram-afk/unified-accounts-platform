@@ -63,6 +63,21 @@ export default function BusinessUsers() {
     }
   }
 
+  async function handleEditName(row) {
+    const newName = window.prompt(`Enter the new full name for ${row.username}:`, row.full_name);
+    if (newName === null) return;
+    const trimmed = newName.trim();
+    if (!trimmed || trimmed === row.full_name) return;
+    try {
+      await api.patch(`/api/businesses/${business.id}/users/${row.id}`, { full_name: trimmed });
+      setToast(`${row.username}'s name updated to ${trimmed}.`);
+      setTimeout(() => setToast(""), 3000);
+      load();
+    } catch (err) {
+      setError(err.message || "Could not update name.");
+    }
+  }
+
   async function handleResetPassword(row) {
     if (!window.confirm(`Reset ${row.username}'s password and issue a new temporary one?`)) return;
     try {
@@ -173,6 +188,9 @@ export default function BusinessUsers() {
                 </div>
                 {canModify(u) && (
                   <div className="row-actions">
+                    <button className="btn small secondary" type="button" onClick={() => handleEditName(u)}>
+                      Edit name
+                    </button>
                     <button className="btn small secondary" type="button" onClick={() => handleToggleActive(u)}>
                       {u.is_active ? "Deactivate" : "Activate"}
                     </button>
