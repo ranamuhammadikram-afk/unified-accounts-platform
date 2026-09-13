@@ -71,14 +71,16 @@ export default function DailyReport() {
     const entriesBody = data.entries.map((e) => [
       TYPE_LABEL[e.type] || e.type,
       e.payment_method || (e.fixed_cost_type ? e.fixed_cost_type : "—"),
-      fmt(e.amount),
+      e.type === "sales" && e.payment_method === "cash" ? fmt(e.amount) : "",
+      e.type === "sales" && e.payment_method === "card" ? fmt(e.amount) : "",
+      e.type !== "sales" ? fmt(e.amount) : "",
       e.description || "",
       e.entered_by,
     ]);
     doc.autoTable({
       startY: doc.lastAutoTable.finalY + 10,
-      head: [["Type", "Detail", `Amount (${currency})`, "Description", "Entered by"]],
-      body: entriesBody.length ? entriesBody : [["No entries for this date.", "", "", "", ""]],
+      head: [["Type", "Detail", "Cash Sale", "Card Sale", `Amount (${currency})`, "Description", "Entered by"]],
+      body: entriesBody.length ? entriesBody : [["No entries for this date.", "", "", "", "", "", ""]],
       theme: "striped",
       headStyles: { fillColor: [29, 111, 82] },
     });
@@ -107,16 +109,34 @@ export default function DailyReport() {
     ]);
     summarySheet["!cols"] = [{ wch: 20 }, { wch: 18 }];
 
-    const entriesHeader = ["Type", "Detail", `Amount (${currency})`, "Description", "Entered by"];
+    const entriesHeader = [
+      "Type",
+      "Detail",
+      `Cash Sale (${currency})`,
+      `Card Sale (${currency})`,
+      `Amount (${currency})`,
+      "Description",
+      "Entered by",
+    ];
     const entriesRows = data.entries.map((e) => [
       TYPE_LABEL[e.type] || e.type,
       e.payment_method || e.fixed_cost_type || "",
-      Number(e.amount),
+      e.type === "sales" && e.payment_method === "cash" ? Number(e.amount) : "",
+      e.type === "sales" && e.payment_method === "card" ? Number(e.amount) : "",
+      e.type !== "sales" ? Number(e.amount) : "",
       e.description || "",
       e.entered_by,
     ]);
     const entriesSheet = XLSX.utils.aoa_to_sheet([entriesHeader, ...entriesRows]);
-    entriesSheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 16 }];
+    entriesSheet["!cols"] = [
+      { wch: 12 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 30 },
+      { wch: 16 },
+    ];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
@@ -196,6 +216,8 @@ export default function DailyReport() {
                     <tr>
                       <th>Type</th>
                       <th>Detail</th>
+                      <th className="num">Cash Sale</th>
+                      <th className="num">Card Sale</th>
                       <th className="num">Amount</th>
                       <th>Description</th>
                       <th>Entered by</th>
@@ -208,8 +230,14 @@ export default function DailyReport() {
                           <span className={`badge ${e.type}`}>{TYPE_LABEL[e.type] || e.type}</span>
                         </td>
                         <td data-label="Detail">{e.payment_method || e.fixed_cost_type || "—"}</td>
+                        <td className="num" data-label="Cash Sale">
+                          {e.type === "sales" && e.payment_method === "cash" ? fmt(e.amount) : ""}
+                        </td>
+                        <td className="num" data-label="Card Sale">
+                          {e.type === "sales" && e.payment_method === "card" ? fmt(e.amount) : ""}
+                        </td>
                         <td className="num" data-label="Amount">
-                          {fmt(e.amount)}
+                          {e.type !== "sales" ? fmt(e.amount) : ""}
                         </td>
                         <td data-label="Description">{e.description || <span className="muted">—</span>}</td>
                         <td data-label="Entered by">{e.entered_by}</td>
