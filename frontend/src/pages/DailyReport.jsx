@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useOutletContext } from "react-router-dom";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import * as XLSX from "xlsx";
 import { api } from "../api";
 
 function todayStr() {
@@ -85,6 +86,44 @@ export default function DailyReport() {
     doc.save(`${business.slug}-daily-${data.date}.pdf`);
   }
 
+  function exportExcel() {
+    if (!data) return;
+    const currency = business.currency || "SAR";
+    const t = data.totals;
+
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      [`${business.name} — Daily Report`],
+      [`Date: ${data.date}`],
+      [],
+      ["Metric", `Amount (${currency})`],
+      ["Sales — Cash", t.salesCash],
+      ["Sales — Card", t.salesCard],
+      ["Total Sales", t.sales],
+      ["Expenses", t.expense],
+      ["Fixed Costs", t.fixedCost],
+      ["Salaries", t.salary],
+      ["Total Outflow", t.outflow],
+      ["Net", t.net],
+    ]);
+    summarySheet["!cols"] = [{ wch: 20 }, { wch: 18 }];
+
+    const entriesHeader = ["Type", "Detail", `Amount (${currency})`, "Description", "Entered by"];
+    const entriesRows = data.entries.map((e) => [
+      TYPE_LABEL[e.type] || e.type,
+      e.payment_method || e.fixed_cost_type || "",
+      Number(e.amount),
+      e.description || "",
+      e.entered_by,
+    ]);
+    const entriesSheet = XLSX.utils.aoa_to_sheet([entriesHeader, ...entriesRows]);
+    entriesSheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 30 }, { wch: 16 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+    XLSX.utils.book_append_sheet(wb, entriesSheet, "Entries");
+    XLSX.writeFile(wb, `${business.slug}-daily-${data.date}.xlsx`);
+  }
+
   return (
     <div>
       <div className="card">
@@ -98,6 +137,9 @@ export default function DailyReport() {
           </button>
           <button className="btn" type="button" onClick={exportPdf} disabled={!data}>
             Export PDF
+          </button>
+          <button className="btn secondary" type="button" onClick={exportExcel} disabled={!data}>
+            Export Excel
           </button>
         </div>
         {error && <div className="error-msg">{error}</div>}
