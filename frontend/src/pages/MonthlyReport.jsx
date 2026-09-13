@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback } from "react";
 import { useOutletContext } from "react-router-dom";
 import jsPDF from "jspdf";
 import "jspdf-autotable";
+import * as XLSX from "xlsx";
 import { api } from "../api";
 
 function thisMonthStr() {
@@ -83,6 +84,38 @@ export default function MonthlyReport() {
     doc.save(`${business.slug}-monthly-${data.month}.pdf`);
   }
 
+  function exportExcel() {
+    if (!data) return;
+    const currency = business.currency || "SAR";
+    const t = data.totals;
+
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      [`${business.name} — Monthly Report`],
+      [`Month: ${data.month}`],
+      [],
+      ["Metric", `Amount (${currency})`],
+      ["Sales — Cash", t.salesCash],
+      ["Sales — Card", t.salesCard],
+      ["Total Sales", t.sales],
+      ["Expenses", t.expense],
+      ["Fixed Costs", t.fixedCost],
+      ["Salaries", t.salary],
+      ["Total Outflow", t.outflow],
+      ["Net", t.net],
+    ]);
+    summarySheet["!cols"] = [{ wch: 20 }, { wch: 18 }];
+
+    const dailyHeader = ["Date", "Sales", "Expenses", "Fixed", "Salary", "Net"];
+    const dailyRows = data.dailyBreakdown.map((d) => [d.date, d.sales, d.expense, d.fixedCost, d.salary, d.net]);
+    const dailySheet = XLSX.utils.aoa_to_sheet([dailyHeader, ...dailyRows]);
+    dailySheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+    XLSX.utils.book_append_sheet(wb, dailySheet, "Daily Breakdown");
+    XLSX.writeFile(wb, `${business.slug}-monthly-${data.month}.xlsx`);
+  }
+
   return (
     <div>
       <div className="card">
@@ -96,6 +129,9 @@ export default function MonthlyReport() {
           </button>
           <button className="btn" type="button" onClick={exportPdf} disabled={!data}>
             Export PDF
+          </button>
+          <button className="btn secondary" type="button" onClick={exportExcel} disabled={!data}>
+            Export Excel
           </button>
         </div>
         {error && <div className="error-msg">{error}</div>}
