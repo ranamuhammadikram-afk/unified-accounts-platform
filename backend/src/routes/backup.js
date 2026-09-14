@@ -1,14 +1,16 @@
 const express = require("express");
 const { requireAuth, requireSuperAdmin } = require("../middleware/auth");
-const { runBackup } = require("../jobs/dropboxBackup");
+const { runBackup, isConfigured } = require("../jobs/dropboxBackup");
 
 const router = express.Router();
 
 // Lets a super admin trigger a Dropbox backup on demand (e.g. to verify configuration)
 // instead of waiting for the nightly schedule.
 router.post("/run", requireAuth, requireSuperAdmin, async (req, res, next) => {
-  if (!process.env.DROPBOX_ACCESS_TOKEN) {
-    return res.status(400).json({ error: "Dropbox backup is not configured (DROPBOX_ACCESS_TOKEN is missing)." });
+  if (!isConfigured()) {
+    return res.status(400).json({
+      error: "Dropbox backup is not configured (DROPBOX_APP_KEY / DROPBOX_APP_SECRET / DROPBOX_REFRESH_TOKEN missing).",
+    });
   }
   try {
     const result = await runBackup();
