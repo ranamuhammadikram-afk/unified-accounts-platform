@@ -2,52 +2,88 @@ const https = require("https");
 const { pool } = require("../db");
 
 /**
+ * Performs a simple HTTPS JSON/form request and resolves with the parsed (or raw) response body.
+ * Shared helper for both the OAuth token refresh call and the file upload call.
+ */
+function httpsRequest(options, body) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(options, (res) => {
+      let data = "";
+      res.setEncoding("utf8");
+      res.on("data", (chunk) => (data += chunk));
+      res.on("end", () => {
+        let parsed;
+        try {
+          parsed = JSON.parse(data);
+        } catch (e) {
+          parsed = { raw: data };
+        }
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve(parsed);
+        } else {
+          reject(new Error(`Dropbox request failed (HTTP ${res.statusCode}): ${data}`));
+        }
+      });
+    });
+    req.on("error", reject);
+    if (body) req.write(body);
+    req.end();
+  });
+}
+
+/**
+ * Dropbox access tokens are short-lived (a few hours). We store a long-lived refresh token
+ * instead (DROPBOX_REFRESH_TOKEN) and exchange it for a fresh access token before every
+ * backup run, using the app's key + secret (DROPBOX_APP_KEY / DROPBOX_APP_SECRET).
+ */
+function getAccessToken() {
+  const appKey = process.env.DROPBOX_APP_KEY;
+  const appSecret = process.env.DROPBOX_APP_SECRET;
+  const refreshToken = process.env.DROPBOX_REFRESH_TOKEN;
+  const body = `grant_type=refresh_token&refresh_token=${encodeURIComponent(refreshToken)}&client_id=${encodeURIComponent(
+    appKey
+  )}&client_secret=${encodeURIComponent(appSecret)}`;
+  return httpsRequest(
+    {
+      hostname: "api.dropboxapi.com",
+      path: "/oauth2/token",
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    },
+    body
+  ).then((res) => res.access_token);
+}
+
+/**
  * Uploads `content` (a UTF-8 string) to Dropbox at `dropboxPath` using a raw HTTPS call
  * to Dropbox's content-upload endpoint. No Dropbox SDK dependency required.
  * Dropbox creates any missing parent folders automatically on upload.
  */
-function dropboxUpload(token, dropboxPath, content) {
-  return new Promise((resolve, reject) => {
-    const body = Buffer.from(content, "utf8");
-    const apiArg = JSON.stringify({
-      path: dropboxPath,
-      mode: "overwrite",
-      autorename: false,
-      mute: true,
-    });
-    const req = https.request(
-      {
-        hostname: "content.dropboxapi.com",
-        path: "/2/files/upload",
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/octet-stream",
-          "Dropbox-API-Arg": apiArg,
-          "Content-Length": body.length,
-        },
-      },
-      (res) => {
-        let data = "";
-        res.setEncoding("utf8");
-        res.on("data", (chunk) => (data += chunk));
-        res.on("end", () => {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              resolve(JSON.parse(data));
-            } catch (e) {
-              resolve({ raw: data });
-            }
-          } else {
-            reject(new Error(`Dropbox upload failed (HTTP ${res.statusCode}): ${data}`));
-          }
-        });
-      }
-    );
-    req.on("error", reject);
-    req.write(body);
-    req.end();
+function dropboxUpload(accessToken, dropboxPath, content) {
+  const body = Buffer.from(content, "utf8");
+  const apiArg = JSON.stringify({
+    path: dropboxPath,
+    mode: "overwrite",
+    autorename: false,
+    mute: true,
   });
+  return httpsRequest(
+    {
+      hostname: "content.dropboxapi.com",
+      path: "/2/files/upload",
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/octet-stream",
+        "Dropbox-API-Arg": apiArg,
+        "Content-Length": body.length,
+      },
+    },
+    body
+  );
 }
 
 /**
@@ -73,21 +109,27 @@ async function buildBackup() {
   };
 }
 
+function isConfigured() {
+  return Boolean(
+    process.env.DROPBOX_APP_KEY && process.env.DROPBOX_APP_SECRET && process.env.DROPBOX_REFRESH_TOKEN
+  );
+}
+
 /**
  * Builds a full backup and uploads it to Dropbox as a dated JSON file.
- * Requires DROPBOX_ACCESS_TOKEN to be set; throws if it's missing.
+ * Throws if Dropbox isn't configured (DROPBOX_APP_KEY / DROPBOX_APP_SECRET / DROPBOX_REFRESH_TOKEN).
  */
 async function runBackup() {
-  const token = process.env.DROPBOX_ACCESS_TOKEN;
-  if (!token) {
-    throw new Error("DROPBOX_ACCESS_TOKEN is not set.");
+  if (!isConfigured()) {
+    throw new Error("Dropbox backup is not configured.");
   }
+  const accessToken = await getAccessToken();
   const data = await buildBackup();
   const json = JSON.stringify(data, null, 2);
   const dateStr = new Date().toISOString().slice(0, 10);
   const folder = process.env.DROPBOX_BACKUP_FOLDER || "/Unified Accounts Platform Backups";
   const dropboxPath = `${folder}/unified-accounts-backup-${dateStr}.json`;
-  await dropboxUpload(token, dropboxPath, json);
+  await dropboxUpload(accessToken, dropboxPath, json);
   // eslint-disable-next-line no-console
   console.log(`[backup] Uploaded backup to Dropbox: ${dropboxPath} (${json.length} bytes)`);
   return { path: dropboxPath, bytes: json.length };
@@ -105,12 +147,12 @@ function msUntilNextRunUTC(hourUTC, minuteUTC) {
 /**
  * Schedules `runBackup` to fire once daily at ~02:00 Asia/Riyadh (= 23:00 UTC, no DST in
  * Saudi Arabia), using a self-rescheduling setTimeout chain rather than a cron dependency.
- * A no-op if DROPBOX_ACCESS_TOKEN isn't configured yet, so this is always safe to call.
+ * A no-op if Dropbox isn't configured yet, so this is always safe to call.
  */
 function scheduleNightlyBackup() {
-  if (!process.env.DROPBOX_ACCESS_TOKEN) {
+  if (!isConfigured()) {
     // eslint-disable-next-line no-console
-    console.log("[backup] DROPBOX_ACCESS_TOKEN not set — nightly Dropbox backup is disabled.");
+    console.log("[backup] Dropbox is not configured — nightly Dropbox backup is disabled.");
     return;
   }
   const HOUR_UTC = 23; // 02:00 Asia/Riyadh
@@ -134,4 +176,4 @@ function scheduleNightlyBackup() {
   console.log("[backup] Nightly Dropbox backup scheduled for ~02:00 Asia/Riyadh (23:00 UTC) daily.");
 }
 
-module.exports = { runBackup, scheduleNightlyBackup, buildBackup };
+module.exports = { runBackup, scheduleNightlyBackup, buildBackup, isConfigured };
