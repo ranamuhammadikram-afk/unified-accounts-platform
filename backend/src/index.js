@@ -9,6 +9,8 @@ const reportRoutes = require("./routes/reports");
 const aggregateRoutes = require("./routes/aggregate");
 const userRoutes = require("./routes/users");
 const auditRoutes = require("./routes/audit");
+const backupRoutes = require("./routes/backup");
+const { scheduleNightlyBackup } = require("./jobs/dropboxBackup");
 
 const app = express();
 
@@ -30,6 +32,7 @@ app.use("/api/businesses/:businessId/reports", reportRoutes);
 app.use("/api/businesses/:businessId/users", userRoutes);
 app.use("/api/businesses/:businessId/audit", auditRoutes);
 app.use("/api/reports", aggregateRoutes);
+app.use("/api/backup", backupRoutes);
 app.use("/api", auditRoutes.globalRouter);
 
 // Central error handler — keeps stack traces out of API responses.
@@ -42,4 +45,5 @@ app.use((err, req, res, next) => {
 const port = process.env.PORT || 4000;
 app.listen(port, () => {
   console.log(`Unified Accounts Platform API listening on port ${port}`);
+  scheduleNightlyBackup();
 });
