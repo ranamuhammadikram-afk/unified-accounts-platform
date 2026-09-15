@@ -1,0 +1,22 @@
+name: Nightly Dropbox Backup
+
+# Calls the backend's cron-protected backup endpoint every night. This exists because the
+# backend runs on Render's free tier, which spins the service down after ~15 minutes of
+# inactivity — an in-process timer alone cannot survive that, so an external, always-on
+# scheduler (GitHub Actions) is used instead. The request both wakes the sleeping service up
+# and triggers the backup.
+on:
+  schedule:
+    - cron: "0 23 * * *" # 23:00 UTC daily = ~02:00 Asia/Riyadh (no DST in Saudi Arabia)
+  workflow_dispatch: {} # allows a manual "Run workflow" click for testing
+
+jobs:
+  trigger-backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call backup endpoint
+        run: |
+          curl -sS -X POST \
+            -H "X-Cron-Secret: ${{ secrets.BACKUP_CRON_SECRET }}" \
+            --fail \
+            https://ikramco.onrender.com/api/backup/cron
