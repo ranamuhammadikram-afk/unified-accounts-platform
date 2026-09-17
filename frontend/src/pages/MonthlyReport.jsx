@@ -5,6 +5,8 @@ import "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { api } from "../api";
 
+const TYPE_LABEL = { fixed_cost: "Fixed cost", salary: "Salary" };
+
 function thisMonthStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -12,6 +14,27 @@ function thisMonthStr() {
 
 function fmt(n) {
   return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function entryDate(e) {
+  const raw = e.occurred_on;
+  return typeof raw === "string" ? raw.slice(0, 10) : new Date(raw).toISOString().slice(0, 10);
+}
+
+// Fixed cost / Salary entries, oldest first, each carrying its own free-text description
+// (and, for Fixed cost, the maintenance/rent/utilities/other sub-type) so the monthly
+// report can show what the money actually went to, not just the daily totals.
+function fixedSalaryDetail(entries) {
+  return (entries || [])
+    .filter((e) => e.type === "fixed_cost" || e.type === "salary")
+    .map((e) => ({
+      date: entryDate(e),
+      type: TYPE_LABEL[e.type] || e.type,
+      detail: e.fixed_cost_type || "—",
+      amount: Number(e.amount),
+      description: e.description || "—",
+      enteredBy: e.entered_by || "—",
+    }));
 }
 
 export default function MonthlyReport() {
@@ -82,6 +105,20 @@ export default function MonthlyReport() {
       headStyles: { fillColor: [29, 111, 82] },
     });
 
+    const detail = fixedSalaryDetail(data.entries);
+    const detailHeadingY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(11);
+    doc.text("Fixed Cost, Salary & Maintenance Detail", 14, detailHeadingY);
+    doc.autoTable({
+      startY: detailHeadingY + 4,
+      head: [["Date", "Type", "Detail", `Amount (${currency})`, "Description", "Entered by"]],
+      body: detail.length
+        ? detail.map((d) => [d.date, d.type, d.detail, fmt(d.amount), d.description, d.enteredBy])
+        : [["No fixed cost or salary entries this month.", "", "", "", "", ""]],
+      theme: "grid",
+      headStyles: { fillColor: [29, 111, 82] },
+    });
+
     doc.save(`${business.slug}-monthly-${data.month}.pdf`);
   }
 
@@ -119,11 +156,20 @@ export default function MonthlyReport() {
     const dailySheet = XLSX.utils.aoa_to_sheet([dailyHeader, ...dailyRows]);
     dailySheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
 
+    const detail = fixedSalaryDetail(data.entries);
+    const detailHeader = ["Date", "Type", "Detail", `Amount (${currency})`, "Description", "Entered by"];
+    const detailRows = detail.map((d) => [d.date, d.type, d.detail, d.amount, d.description, d.enteredBy]);
+    const detailSheet = XLSX.utils.aoa_to_sheet([detailHeader, ...detailRows]);
+    detailSheet["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 40 }, { wch: 16 }];
+
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
     XLSX.utils.book_append_sheet(wb, dailySheet, "Daily Breakdown");
+    XLSX.utils.book_append_sheet(wb, detailSheet, "Fixed Cost & Salary Detail");
     XLSX.writeFile(wb, `${business.slug}-monthly-${data.month}.xlsx`);
   }
+
+  const detailRows = data ? fixedSalaryDetail(data.entries) : [];
 
   return (
     <div>
@@ -226,6 +272,44 @@ export default function MonthlyReport() {
                         <td className="num" data-label="Net">
                           {fmt(d.net)}
                         </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="card">
+            <h3>Fixed Cost, Salary &amp; Maintenance Detail</h3>
+            {detailRows.length === 0 ? (
+              <div className="empty">No fixed cost or salary entries this month.</div>
+            ) : (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Date</th>
+                      <th>Type</th>
+                      <th>Detail</th>
+                      <th className="num">Amount</th>
+                      <th>Description</th>
+                      <th>Entered by</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {detailRows.map((d, i) => (
+                      <tr key={`${d.date}-${i}`}>
+                        <td data-label="Date">{d.date}</td>
+                        <td data-label="Type">
+                          <span className={`badge ${d.type === "Salary" ? "salary" : "fixed_cost"}`}>{d.type}</span>
+                        </td>
+                        <td data-label="Detail">{d.detail}</td>
+                        <td className="num" data-label="Amount">
+                          {fmt(d.amount)}
+                        </td>
+                        <td data-label="Description">{d.description}</td>
+                        <td data-label="Entered by">{d.enteredBy}</td>
                       </tr>
                     ))}
                   </tbody>
