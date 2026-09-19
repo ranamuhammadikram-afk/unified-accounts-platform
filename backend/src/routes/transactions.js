@@ -8,9 +8,10 @@ const router = express.Router({ mergeParams: true });
 const VALID_TYPES = ["sales", "expense", "fixed_cost", "salary"];
 const VALID_METHODS = ["cash", "card"];
 const VALID_FIXED_TYPES = ["rent", "maintenance", "utilities", "other"];
+const VALID_EXPENSE_CATEGORIES = ["supplies", "utilities", "maintenance", "transport", "marketing", "other"];
 
 function validatePayload(body) {
-  const { type, occurred_on, amount, payment_method, fixed_cost_type, description } = body || {};
+  const { type, occurred_on, amount, payment_method, fixed_cost_type, expense_category, description } = body || {};
   if (!VALID_TYPES.includes(type)) return "type must be one of: " + VALID_TYPES.join(", ");
   if (!occurred_on || Number.isNaN(Date.parse(occurred_on))) return "occurred_on must be a valid date (YYYY-MM-DD).";
   const amt = Number(amount);
@@ -21,6 +22,10 @@ function validatePayload(body) {
     return "fixed_cost entries require fixed_cost_type: " + VALID_FIXED_TYPES.join(", ");
   }
   if (type !== "fixed_cost" && fixed_cost_type) return "fixed_cost_type only applies to fixed_cost entries.";
+  if (type === "expense" && !VALID_EXPENSE_CATEGORIES.includes(expense_category)) {
+    return "expense entries require expense_category: " + VALID_EXPENSE_CATEGORIES.join(", ");
+  }
+  if (type !== "expense" && expense_category) return "expense_category only applies to expense entries.";
   if (description && description.length > 500) return "description is too long (max 500 characters).";
   return null;
 }
@@ -38,7 +43,7 @@ router.get("/", requireAuth, requireBusinessAccess("viewer", (req) => req.params
 
     const { rows } = await pool.query(
       `SELECT t.id, t.business_id, t.type, t.occurred_on, t.amount, t.payment_method, t.fixed_cost_type,
-              t.description, t.created_at, t.updated_at, u.username AS entered_by
+              t.expense_category, t.description, t.created_at, t.updated_at, u.username AS entered_by
        FROM transactions t JOIN users u ON u.id = t.user_id
        WHERE ${clauses.join(" AND ")}
        ORDER BY t.occurred_on DESC, t.created_at DESC`,
@@ -55,12 +60,22 @@ router.post("/", requireAuth, requireBusinessAccess("staff", (req) => req.params
   try {
     const err = validatePayload(req.body);
     if (err) return res.status(400).json({ error: err });
-    const { type, occurred_on, amount, payment_method, fixed_cost_type, description } = req.body;
+    const { type, occurred_on, amount, payment_method, fixed_cost_type, expense_category, description } = req.body;
 
     const { rows } = await pool.query(
-      `INSERT INTO transactions (business_id, user_id, type, occurred_on, amount, payment_method, fixed_cost_type, description)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-      [req.businessId, req.user.id, type, occurred_on, amount, payment_method || null, fixed_cost_type || null, description || null]
+      `INSERT INTO transactions (business_id, user_id, type, occurred_on, amount, payment_method, fixed_cost_type, expense_category, description)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+      [
+        req.businessId,
+        req.user.id,
+        type,
+        occurred_on,
+        amount,
+        payment_method || null,
+        fixed_cost_type || null,
+        expense_category || null,
+        description || null,
+      ]
     );
     await recordAudit({
       businessId: req.businessId,
@@ -102,13 +117,25 @@ router.patch("/:id", requireAuth, requireBusinessAccess("staff", (req) => req.pa
     if (!existing) return;
     const err = validatePayload({ ...existing, ...req.body });
     if (err) return res.status(400).json({ error: err });
-    const { type, occurred_on, amount, payment_method, fixed_cost_type, description } = { ...existing, ...req.body };
+    const { type, occurred_on, amount, payment_method, fixed_cost_type, expense_category, description } = {
+      ...existing,
+      ...req.body,
+    };
 
     const { rows } = await pool.query(
       `UPDATE transactions SET type=$1, occurred_on=$2, amount=$3, payment_method=$4, fixed_cost_type=$5,
-              description=$6, updated_at=now()
-       WHERE id = $7 RETURNING *`,
-      [type, occurred_on, amount, payment_method || null, fixed_cost_type || null, description || null, existing.id]
+              expense_category=$6, description=$7, updated_at=now()
+       WHERE id = $8 RETURNING *`,
+      [
+        type,
+        occurred_on,
+        amount,
+        payment_method || null,
+        fixed_cost_type || null,
+        expense_category || null,
+        description || null,
+        existing.id,
+      ]
     );
     await recordAudit({
       businessId: req.businessId,
