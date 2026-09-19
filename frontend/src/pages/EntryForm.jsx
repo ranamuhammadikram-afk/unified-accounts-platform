@@ -15,6 +15,15 @@ const TYPE_LABELS = {
   salary: "Salary",
 };
 
+const EXPENSE_CATEGORY_LABELS = {
+  supplies: "Supplies",
+  utilities: "Utilities",
+  maintenance: "Maintenance",
+  transport: "Transport",
+  marketing: "Marketing",
+  other: "Other",
+};
+
 export default function EntryForm() {
   const { business } = useOutletContext();
   const [type, setType] = useState("sales");
@@ -22,6 +31,7 @@ export default function EntryForm() {
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("cash");
   const [fixedCostType, setFixedCostType] = useState("rent");
+  const [expenseCategory, setExpenseCategory] = useState("supplies");
   const [description, setDescription] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -39,6 +49,7 @@ export default function EntryForm() {
     };
     if (type === "sales") payload.payment_method = paymentMethod;
     if (type === "fixed_cost") payload.fixed_cost_type = fixedCostType;
+    if (type === "expense") payload.expense_category = expenseCategory;
 
     setBusy(true);
     try {
@@ -110,6 +121,18 @@ export default function EntryForm() {
                 <option value="maintenance">Maintenance</option>
                 <option value="utilities">Utilities</option>
                 <option value="other">Other</option>
+              </select>
+            </div>
+          )}
+          {type === "expense" && (
+            <div className="field">
+              <label htmlFor="expense_category">Expense category</label>
+              <select id="expense_category" value={expenseCategory} onChange={(e) => setExpenseCategory(e.target.value)}>
+                {Object.entries(EXPENSE_CATEGORY_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
               </select>
             </div>
           )}
