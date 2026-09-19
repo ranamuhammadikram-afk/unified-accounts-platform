@@ -172,3 +172,12 @@ td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
 .filter-bar{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;}
 .filter-bar .field{margin-bottom:0;}
 .muted{color:var(--muted); font-weight:400;}
+
+/* Profit & Loss statement table */
+.pnl-table td.pnl-indent{padding-left:22px; color:var(--muted);}
+.pnl-table tr.pnl-section td{background:var(--accent-light); font-weight:700; color:var(--accent-dark); text-transform:uppercase; font-size:11.5px; letter-spacing:.02em;}
+.pnl-table tr.pnl-revenue td{font-weight:700;}
+.pnl-table tr.pnl-subtotal td{font-weight:700; border-top:2px solid var(--border);}
+.pnl-table tr.pnl-net td{font-weight:700; font-size:14px; border-top:2px solid var(--text);}
+.pnl-table tr.pnl-net.positive td{color:var(--sales);}
+.pnl-table tr.pnl-net.negative td{color:var(--danger);}
