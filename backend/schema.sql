@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount            NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
     payment_method    TEXT CHECK (payment_method IN ('cash', 'card') OR payment_method IS NULL),
     fixed_cost_type   TEXT CHECK (fixed_cost_type IN ('rent', 'maintenance', 'utilities', 'other') OR fixed_cost_type IS NULL),
+    expense_category  TEXT CHECK (expense_category IN ('supplies', 'utilities', 'maintenance', 'transport', 'marketing', 'other') OR expense_category IS NULL),
     description       TEXT,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
