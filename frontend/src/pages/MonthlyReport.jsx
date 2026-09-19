@@ -7,6 +7,16 @@ import { api } from "../api";
 
 const TYPE_LABEL = { fixed_cost: "Fixed cost", salary: "Salary" };
 
+const EXPENSE_CATEGORY_LABEL = {
+  supplies: "Supplies",
+  utilities: "Utilities",
+  maintenance: "Maintenance",
+  transport: "Transport",
+  marketing: "Marketing",
+  other: "Other",
+};
+const EXPENSE_CATEGORY_ORDER = ["supplies", "utilities", "maintenance", "transport", "marketing", "other"];
+
 function thisMonthStr() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -35,6 +45,55 @@ function fixedSalaryDetail(entries) {
       description: e.description || "—",
       enteredBy: e.entered_by || "—",
     }));
+}
+
+function pct(amount, revenue) {
+  if (!revenue) return "—";
+  return `${((amount / revenue) * 100).toFixed(1)}%`;
+}
+
+// Builds a proper Profit & Loss statement from the report totals: revenue, an expense-by-category
+// breakdown (only categories actually used that month are shown), fixed costs, salaries, and the
+// resulting net profit. Shared by the on-screen table, the PDF export, and the Excel export so all
+// three always agree.
+function buildPnl(totals) {
+  const revenue = totals.sales;
+  const categoryRows = EXPENSE_CATEGORY_ORDER.filter((key) => (totals.expenseByCategory?.[key] || 0) > 0).map(
+    (key) => ({
+      label: EXPENSE_CATEGORY_LABEL[key],
+      amount: totals.expenseByCategory[key],
+      indent: true,
+    })
+  );
+  return {
+    revenue,
+    rows: [
+      { label: "Revenue (Total Sales)", amount: revenue, kind: "revenue" },
+      { label: "Operating Expenses", kind: "section" },
+      ...categoryRows,
+      { label: "Total Expenses", amount: totals.expense, kind: "subtotal" },
+      { label: "Fixed Costs", amount: totals.fixedCost },
+      { label: "Salaries", amount: totals.salary },
+      { label: "Total Operating Expenses", amount: totals.outflow, kind: "subtotal" },
+      { label: "Net Profit", amount: totals.net, kind: "net" },
+    ],
+  };
+}
+
+// Renders one P&L row as a jspdf-autotable body row, bolding subtotal/net/revenue lines and
+// shading the section header.
+function pnlPdfRow(row, revenue) {
+  if (row.kind === "section") {
+    return [{ content: row.label, colSpan: 3, styles: { fontStyle: "bold", fillColor: [230, 242, 236] } }];
+  }
+  const bold = row.kind === "subtotal" || row.kind === "net" || row.kind === "revenue";
+  const styles = bold ? { fontStyle: "bold" } : {};
+  const label = (row.indent ? "    " : "") + row.label;
+  return [
+    { content: label, styles },
+    { content: fmt(row.amount), styles },
+    { content: pct(row.amount, revenue), styles },
+  ];
 }
 
 export default function MonthlyReport() {
@@ -84,6 +143,18 @@ export default function MonthlyReport() {
         ["Total Outflow", fmt(t.outflow)],
         ["Net", fmt(t.net)],
       ],
+      theme: "grid",
+      headStyles: { fillColor: [29, 111, 82] },
+    });
+
+    const pnl = buildPnl(t);
+    const pnlHeadingY = doc.lastAutoTable.finalY + 10;
+    doc.setFontSize(11);
+    doc.text("Profit & Loss Statement", 14, pnlHeadingY);
+    doc.autoTable({
+      startY: pnlHeadingY + 4,
+      head: [["Line item", `Amount (${currency})`, "% of revenue"]],
+      body: pnl.rows.map((r) => pnlPdfRow(r, pnl.revenue)),
       theme: "grid",
       headStyles: { fillColor: [29, 111, 82] },
     });
@@ -143,6 +214,20 @@ export default function MonthlyReport() {
     ]);
     summarySheet["!cols"] = [{ wch: 20 }, { wch: 18 }];
 
+    const pnl = buildPnl(t);
+    const pnlHeader = ["Line item", `Amount (${currency})`, "% of revenue"];
+    const pnlRows = pnl.rows.map((r) =>
+      r.kind === "section" ? [r.label, "", ""] : [(r.indent ? "  " : "") + r.label, r.amount, pct(r.amount, pnl.revenue)]
+    );
+    const pnlSheet = XLSX.utils.aoa_to_sheet([
+      [`${business.name} — Profit & Loss Statement`],
+      [`Month: ${data.month}`],
+      [],
+      pnlHeader,
+      ...pnlRows,
+    ]);
+    pnlSheet["!cols"] = [{ wch: 30 }, { wch: 16 }, { wch: 14 }];
+
     const dailyHeader = ["Date", "Cash Sale", "Card Sale", "Expenses", "Fixed", "Salary", "Net"];
     const dailyRows = data.dailyBreakdown.map((d) => [
       d.date,
@@ -164,12 +249,14 @@ export default function MonthlyReport() {
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
+    XLSX.utils.book_append_sheet(wb, pnlSheet, "Profit & Loss");
     XLSX.utils.book_append_sheet(wb, dailySheet, "Daily Breakdown");
     XLSX.utils.book_append_sheet(wb, detailSheet, "Fixed Cost & Salary Detail");
     XLSX.writeFile(wb, `${business.slug}-monthly-${data.month}.xlsx`);
   }
 
   const detailRows = data ? fixedSalaryDetail(data.entries) : [];
+  const pnl = data ? buildPnl(data.totals) : null;
 
   return (
     <div>
@@ -229,6 +316,41 @@ export default function MonthlyReport() {
                 <div className="label">Net</div>
                 <div className="value">{fmt(data.totals.net)}</div>
               </div>
+            </div>
+          </div>
+
+          <div className="card">
+            <h3>Profit &amp; Loss Statement</h3>
+            <div className="table-scroll">
+              <table className="pnl-table">
+                <thead>
+                  <tr>
+                    <th>Line item</th>
+                    <th className="num">Amount</th>
+                    <th className="num">% of revenue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pnl.rows.map((r, i) =>
+                    r.kind === "section" ? (
+                      <tr key={i} className="pnl-section">
+                        <td colSpan={3}>{r.label}</td>
+                      </tr>
+                    ) : (
+                      <tr
+                        key={i}
+                        className={
+                          r.kind === "net" ? `pnl-net ${r.amount >= 0 ? "positive" : "negative"}` : r.kind === "subtotal" ? "pnl-subtotal" : r.kind === "revenue" ? "pnl-revenue" : ""
+                        }
+                      >
+                        <td className={r.indent ? "pnl-indent" : ""}>{r.label}</td>
+                        <td className="num">{fmt(r.amount)}</td>
+                        <td className="num">{pct(r.amount, pnl.revenue)}</td>
+                      </tr>
+                    )
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
