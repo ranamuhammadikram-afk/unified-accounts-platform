@@ -5,6 +5,15 @@ import { useAuth } from "../context/AuthContext.jsx";
 
 const TYPE_LABEL = { sales: "Sales", expense: "Expense", fixed_cost: "Fixed cost", salary: "Salary" };
 
+const EXPENSE_CATEGORY_LABEL = {
+  supplies: "Supplies",
+  utilities: "Utilities",
+  maintenance: "Maintenance",
+  transport: "Transport",
+  marketing: "Marketing",
+  other: "Other",
+};
+
 function fmt(n) {
   return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -71,6 +80,7 @@ export default function Records() {
       amount: row.amount,
       payment_method: row.payment_method || "cash",
       fixed_cost_type: row.fixed_cost_type || "rent",
+      expense_category: row.expense_category || "supplies",
       description: row.description || "",
     });
   }
@@ -85,6 +95,7 @@ export default function Records() {
       description: editing.description || null,
       payment_method: editing.type === "sales" ? editing.payment_method : null,
       fixed_cost_type: editing.type === "fixed_cost" ? editing.fixed_cost_type : null,
+      expense_category: editing.type === "expense" ? editing.expense_category : null,
     };
     try {
       await api.patch(`/api/businesses/${business.id}/transactions/${editing.id}`, payload);
@@ -188,6 +199,21 @@ export default function Records() {
                 </select>
               </div>
             )}
+            {editing.type === "expense" && (
+              <div className="field">
+                <label>Expense category</label>
+                <select
+                  value={editing.expense_category}
+                  onChange={(e) => setEditing({ ...editing, expense_category: e.target.value })}
+                >
+                  {Object.entries(EXPENSE_CATEGORY_LABEL).map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
           <div className="field">
             <label>Description</label>
@@ -233,7 +259,12 @@ export default function Records() {
                     <td data-label="Type">
                       <span className={`badge ${row.type}`}>{TYPE_LABEL[row.type] || row.type}</span>
                     </td>
-                    <td data-label="Detail">{row.payment_method || row.fixed_cost_type || "—"}</td>
+                    <td data-label="Detail">
+                      {row.payment_method ||
+                        row.fixed_cost_type ||
+                        (row.expense_category && EXPENSE_CATEGORY_LABEL[row.expense_category]) ||
+                        "—"}
+                    </td>
                     <td className="num" data-label="Amount">
                       {fmt(row.amount)}
                     </td>
