@@ -44,13 +44,14 @@ function accumulate(totals, row) {
 function finalize(totals) {
   totals.outflow = totals.expense + totals.fixedCost + totals.salary;
   totals.net = totals.sales - totals.outflow;
-  return totals;\n}
+  return totals;
+}
 
 // GET /api/businesses/:businessId/reports/daily?date=YYYY-MM-DD
 router.get("/daily", requireAuth, requireBusinessAccess("viewer", (req) => req.params.businessId), async (req, res, next) => {
   try {
     const date = req.query.date;
-    if (!date) return res.status(400).json({ error: "date is required (YYYY-MM-DD.)" });
+    if (!date) return res.status(400).json({ error: "date is required (YYYY-MM-DD)." });
     const { rows } = await pool.query(
       `SELECT t.*, u.username AS entered_by FROM transactions t JOIN users u ON u.id = t.user_id
        WHERE t.business_id = $1 AND t.occurred_on = $2 AND t.deleted_at IS NULL
