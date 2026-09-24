@@ -1,6 +1,7 @@
-name: Nightly Dropbox Backup
+name: Nightly Oracle Backup
 
-# Calls the backend's cron-protected backup endpoint every night. This exists because the
+# Calls the backend's cron-protected backup endpoint every night, which uploads a full
+# database backup to Oracle Cloud Object Storage. This exists because the
 # backend runs on Render's free tier, which spins the service down after ~15 minutes of
 # inactivity — an in-process timer alone cannot survive that, so an external, always-on
 # scheduler (GitHub Actions) is used instead. The request both wakes the sleeping service up
