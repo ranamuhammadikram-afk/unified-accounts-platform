@@ -11,7 +11,7 @@ const aggregateRoutes = require("./routes/aggregate");
 const userRoutes = require("./routes/users");
 const auditRoutes = require("./routes/audit");
 const backupRoutes = require("./routes/backup");
-const { scheduleNightlyBackup } = require("./jobs/dropboxBackup");
+const { scheduleNightlyBackup } = require("./jobs/nightlyBackup");
 
 const app = express();
 
