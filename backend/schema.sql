@@ -21,8 +21,38 @@ CREATE TABLE IF NOT EXISTS users (
     is_active       BOOLEAN NOT NULL DEFAULT true,
     must_change_password BOOLEAN NOT NULL DEFAULT false,
     last_login_at   TIMESTAMPTZ,
-    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    -- Account security (two-factor authentication + recovery email)
+    totp_enabled            BOOLEAN NOT NULL DEFAULT false,
+    totp_secret             TEXT,  -- encrypted (AES-256-GCM), see src/security.js
+    totp_pending_secret     TEXT,
+    recovery_email          TEXT,
+    recovery_email_verified BOOLEAN NOT NULL DEFAULT false,
+    recovery_email_pending  TEXT,
+    password_changed_at     TIMESTAMPTZ
 );
+
+-- One-time 2FA backup codes (only SHA-256 hashes are stored).
+CREATE TABLE IF NOT EXISTS user_backup_codes (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    code_hash  TEXT NOT NULL,
+    used_at    TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON user_backup_codes (user_id);
+
+-- Password-reset links and recovery-email confirmation codes (only hashes are stored).
+CREATE TABLE IF NOT EXISTS auth_tokens (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    purpose    TEXT NOT NULL CHECK (purpose IN ('password_reset', 'verify_email')),
+    token_hash TEXT NOT NULL,
+    expires_at TIMESTAMPTZ NOT NULL,
+    used_at    TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_lookup ON auth_tokens (purpose, token_hash);
 
 CREATE TABLE IF NOT EXISTS user_business_roles (
     id            BIGSERIAL PRIMARY KEY,
