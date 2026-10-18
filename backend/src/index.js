@@ -62,9 +62,45 @@ async function ensureSchema() {
     `);
     // eslint-disable-next-line no-console
     console.log("[schema] expense_category column ready.");
+
+    // Account security: two-factor authentication, backup codes and a recovery email.
+    await pool.query(`
+      ALTER TABLE users
+        ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS totp_secret TEXT,
+        ADD COLUMN IF NOT EXISTS totp_pending_secret TEXT,
+        ADD COLUMN IF NOT EXISTS recovery_email TEXT,
+        ADD COLUMN IF NOT EXISTS recovery_email_verified BOOLEAN NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS recovery_email_pending TEXT,
+        ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS user_backup_codes (
+        id         BIGSERIAL PRIMARY KEY,
+        user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        code_hash  TEXT NOT NULL,
+        used_at    TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_backup_codes_user ON user_backup_codes (user_id)`);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS auth_tokens (
+        id         BIGSERIAL PRIMARY KEY,
+        user_id    BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        purpose    TEXT NOT NULL CHECK (purpose IN ('password_reset', 'verify_email')),
+        token_hash TEXT NOT NULL,
+        expires_at TIMESTAMPTZ NOT NULL,
+        used_at    TIMESTAMPTZ,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `);
+    await pool.query(`CREATE INDEX IF NOT EXISTS idx_auth_tokens_lookup ON auth_tokens (purpose, token_hash)`);
+    // eslint-disable-next-line no-console
+    console.log("[schema] account security tables ready.");
   } catch (err) {
     // eslint-disable-next-line no-console
-    console.error("[schema] Could not ensure expense_category column:", err);
+    console.error("[schema] Could not apply schema updates:", err);
   }
 }
 
