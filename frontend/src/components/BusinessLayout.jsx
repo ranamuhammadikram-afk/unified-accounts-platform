@@ -43,6 +43,9 @@ export default function BusinessLayout() {
               Switch business
             </Link>
           )}
+          <Link className="btnlike" to="/security">
+            Security
+          </Link>
           <span className="who">{user.full_name || user.username}</span>
           <button onClick={logout}>Log out</button>
         </div>
