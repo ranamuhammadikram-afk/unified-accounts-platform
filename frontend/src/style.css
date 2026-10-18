@@ -181,3 +181,12 @@ td.num, th.num{text-align:right; font-variant-numeric:tabular-nums;}
 .pnl-table tr.pnl-net td{font-weight:700; font-size:14px; border-top:2px solid var(--text);}
 .pnl-table tr.pnl-net.positive td{color:var(--sales);}
 .pnl-table tr.pnl-net.negative td{color:var(--danger);}
+
+/* Account security */
+a.link{color:var(--accent-dark); font-size:13px; font-weight:600; text-decoration:underline;}
+.notice{border:1px solid var(--border); border-left:4px solid var(--expense); background:#fff; border-radius:var(--radius); padding:12px 14px; margin-bottom:14px; font-size:13px;}
+.notice a{color:var(--accent-dark); text-decoration:underline; font-weight:600;}
+.code-list{columns:2; margin:0 0 12px; padding-left:22px; font-size:14px;}
+.code-list li{margin:3px 0;}
+img.qr{display:block; border:1px solid var(--border); border-radius:6px; margin:6px 0 10px;}
+code.key{background:#f4f6f8; padding:2px 6px; border-radius:4px; font-weight:700; word-break:break-all;}
