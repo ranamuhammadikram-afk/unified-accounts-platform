@@ -138,12 +138,21 @@ export default function SuperAdminDashboard() {
           <div className="sub">Super admin dashboard</div>
         </div>
         <div className="right">
+          <Link className="btnlike" to="/security">
+            Security
+          </Link>
           <span className="who">{user.full_name || user.username}</span>
           <button onClick={logout}>Log out</button>
         </div>
       </header>
 
       <main>
+        {!user.totp_enabled && (
+          <div className="notice">
+            <strong>Protect the owner account.</strong> Two-factor authentication is off. Turn it on with Google
+            Authenticator on the <Link to="/security">Security page</Link>.
+          </div>
+        )}
         <div className="card">
           <h2>Businesses</h2>
           {bizError && <div className="error-msg">{bizError}</div>}
