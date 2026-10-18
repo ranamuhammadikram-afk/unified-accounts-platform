@@ -4,6 +4,9 @@ import { useAuth } from "./context/AuthContext.jsx";
 
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
+import ForgotPassword from "./pages/ForgotPassword.jsx";
+import ResetPassword from "./pages/ResetPassword.jsx";
+import Security from "./pages/Security.jsx";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard.jsx";
 import BusinessLayout from "./components/BusinessLayout.jsx";
 import EntryForm from "./pages/EntryForm.jsx";
@@ -53,6 +56,16 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password" element={<ResetPassword />} />
+      <Route
+        path="/security"
+        element={
+          <RequireAuth>
+            <Security />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/change-password"
         element={
