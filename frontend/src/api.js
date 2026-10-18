@@ -22,6 +22,14 @@ async function request(method, path, body) {
     /* no body */
   }
 
+  // A session that is no longer valid (expired, or signed out because the password was changed
+  // elsewhere): clear it and go back to the sign-in page instead of showing errors everywhere.
+  if (res.status === 401 && token && !path.startsWith("/api/auth/login")) {
+    localStorage.removeItem("uap_token");
+    localStorage.removeItem("uap_user");
+    if (window.location.pathname !== "/login") window.location.assign("/login");
+  }
+
   if (!res.ok) {
     const message = (data && data.error) || `Request failed (${res.status})`;
     const err = new Error(message);
