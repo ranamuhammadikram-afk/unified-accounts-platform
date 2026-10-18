@@ -4,7 +4,7 @@ import { api } from "../api";
 import { useAuth } from "../context/AuthContext.jsx";
 
 export default function ChangePassword() {
-  const { user, updateUser, logout } = useAuth();
+  const { user, updateUser, replaceToken, logout } = useAuth();
   const navigate = useNavigate();
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -25,7 +25,8 @@ export default function ChangePassword() {
     }
     setBusy(true);
     try {
-      await api.post("/api/auth/change-password", { currentPassword, newPassword });
+      const res = await api.post("/api/auth/change-password", { currentPassword, newPassword });
+      replaceToken(res && res.token);
       updateUser({ must_change_password: false });
       navigate("/", { replace: true });
     } catch (err) {
