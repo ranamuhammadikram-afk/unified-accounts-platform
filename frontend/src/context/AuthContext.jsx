@@ -27,12 +27,37 @@ export function AuthProvider({ children }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user && user.id]);
 
-  const login = useCallback(async (username, password) => {
-    const data = await api.post("/api/auth/login", { username, password });
+  const finishLogin = useCallback((data) => {
     localStorage.setItem("uap_token", data.token);
     localStorage.setItem("uap_user", JSON.stringify(data.user));
     setUser(data.user);
-    return data.user;
+  }, []);
+
+  // Step 1: username + password. Returns { mfaRequired, mfaToken } when the account has
+  // two-factor authentication on, otherwise signs in and returns { user }.
+  const login = useCallback(
+    async (username, password) => {
+      const data = await api.post("/api/auth/login", { username, password });
+      if (data.mfa_required) return { mfaRequired: true, mfaToken: data.mfa_token };
+      finishLogin(data);
+      return { user: data.user };
+    },
+    [finishLogin]
+  );
+
+  // Step 2 (only with 2FA on): the authenticator code or a backup code.
+  const completeMfa = useCallback(
+    async (mfaToken, code) => {
+      const data = await api.post("/api/auth/login/2fa", { mfa_token: mfaToken, code });
+      finishLogin(data);
+      return data;
+    },
+    [finishLogin]
+  );
+
+  // Used after a password change, which signs out older sessions and returns a fresh token.
+  const replaceToken = useCallback((token) => {
+    if (token) localStorage.setItem("uap_token", token);
   }, []);
 
   const logout = useCallback(() => {
@@ -51,7 +76,7 @@ export function AuthProvider({ children }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, businesses, loadingBusinesses, refreshBusinesses, login, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, businesses, loadingBusinesses, refreshBusinesses, login, completeMfa, replaceToken, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );
