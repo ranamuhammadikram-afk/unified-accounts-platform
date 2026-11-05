@@ -1,10 +1,11 @@
 import React from "react";
 import { NavLink, Outlet, useParams, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import { TopBar, TopLink, Icon } from "./ui.jsx";
 
 export default function BusinessLayout() {
   const { slug } = useParams();
-  const { user, businesses, loadingBusinesses, logout } = useAuth();
+  const { user, businesses, loadingBusinesses } = useAuth();
 
   if (loadingBusinesses && businesses.length === 0) {
     return <div className="page-loading">Loading…</div>;
@@ -14,7 +15,10 @@ export default function BusinessLayout() {
   if (!business) {
     return (
       <div className="page-loading">
-        You don't have access to that business. <Link to="/">Go back</Link>
+        You don't have access to that business.{" "}
+        <Link className="link" to="/">
+          Go back
+        </Link>
       </div>
     );
   }
@@ -25,54 +29,35 @@ export default function BusinessLayout() {
 
   return (
     <>
-      <header className="appbar">
-        <div>
-          <h1>{business.name}</h1>
-          <div className="sub">
-            {business.currency || "SAR"} · your role: {String(role).replace("_", " ")}
-          </div>
-        </div>
-        <div className="right">
-          {user.is_super_admin && (
-            <Link className="btnlike" to="/admin">
-              Admin dashboard
-            </Link>
-          )}
-          {businesses.length > 1 && (
-            <Link className="btnlike" to="/choose-business">
-              Switch business
-            </Link>
-          )}
-          <Link className="btnlike" to="/security">
-            Security
-          </Link>
-          <span className="who">{user.full_name || user.username}</span>
-          <button onClick={logout}>Log out</button>
-        </div>
-      </header>
-      <nav className="tabs">
-        <NavLink to="entry" className={tabClass}>
-          Entry
-        </NavLink>
-        <NavLink to="daily" className={tabClass}>
-          Daily
-        </NavLink>
-        <NavLink to="monthly" className={tabClass}>
-          Monthly
-        </NavLink>
-        <NavLink to="records" className={tabClass}>
-          Records
-        </NavLink>
-        {canManage && (
-          <NavLink to="users" className={tabClass}>
-            Users
+      <TopBar context={business.name}>
+        {user.is_super_admin && <TopLink to="/admin">Overview</TopLink>}
+        {!user.is_super_admin && businesses.length > 1 && <TopLink to="/choose-business">Switch business</TopLink>}
+      </TopBar>
+      <nav className="subnav" aria-label={`${business.name} sections`}>
+        <div className="subnav-inner">
+          <NavLink to="entry" className={tabClass}>
+            <Icon name="entry" /> Entry
           </NavLink>
-        )}
-        {canManage && (
-          <NavLink to="audit" className={tabClass}>
-            Audit
+          <NavLink to="daily" className={tabClass}>
+            <Icon name="daily" /> Daily
           </NavLink>
-        )}
+          <NavLink to="monthly" className={tabClass}>
+            <Icon name="monthly" /> Monthly
+          </NavLink>
+          <NavLink to="records" className={tabClass}>
+            <Icon name="records" /> Records
+          </NavLink>
+          {canManage && (
+            <NavLink to="users" className={tabClass}>
+              <Icon name="users" /> Users
+            </NavLink>
+          )}
+          {canManage && (
+            <NavLink to="audit" className={tabClass}>
+              <Icon name="audit" /> Audit
+            </NavLink>
+          )}
+        </div>
       </nav>
       <main>
         <Outlet context={{ business, role, canManage }} />
