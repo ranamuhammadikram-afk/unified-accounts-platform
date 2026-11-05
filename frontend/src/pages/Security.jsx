@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext.jsx";
+import { TopBar, TopLink, PageHead, Icon } from "../components/ui.jsx";
 
 function BackupCodes({ codes, username, onDone }) {
   const text =
@@ -21,10 +22,11 @@ function BackupCodes({ codes, username, onDone }) {
 
   return (
     <div className="temp-pass-box">
-      <strong>Your backup codes</strong>
-      <p style={{ margin: "6px 0 10px" }}>
-        Save these now — they won't be shown again. If your phone is lost, each code can be used once to sign in
-        instead of the authenticator code.
+      <div className="eyebrow">Save these now</div>
+      <strong style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 500 }}>Your backup codes</strong>
+      <p className="hint" style={{ margin: "6px 0 0" }}>
+        They won't be shown again. If your phone is lost, each code can be used once to sign in instead of the
+        authenticator code. Keep them somewhere safe, away from your phone.
       </p>
       <ol className="code-list">
         {codes.map((c) => (
@@ -49,7 +51,7 @@ function BackupCodes({ codes, username, onDone }) {
 }
 
 export default function Security() {
-  const { user, updateUser, logout } = useAuth();
+  const { user, updateUser } = useAuth();
   const [status, setStatus] = useState(null);
   const [loadError, setLoadError] = useState("");
 
@@ -186,48 +188,45 @@ export default function Security() {
 
   return (
     <>
-      <header className="appbar">
-        <div>
-          <h1>Account security</h1>
-          <div className="sub">{user.full_name || user.username}</div>
-        </div>
-        <div className="right">
-          <Link className="btnlike" to={home}>
+      <TopBar context="Account security">
+        {user.is_super_admin && <TopLink to="/admin">Overview</TopLink>}
+      </TopBar>
+
+      <main className="narrow">
+        <PageHead eyebrow={user.full_name || user.username} title="Security" sub="Protect your sign-in and keep a way back into your account.">
+          <Link className="btn ghost" to={home}>
             Back
           </Link>
-          <button onClick={logout}>Log out</button>
-        </div>
-      </header>
-
-      <main>
+        </PageHead>
         {loadError && <div className="error-msg">{loadError}</div>}
         {!status && !loadError && <div className="page-loading">Loading…</div>}
 
         {status && (
           <>
             <div className="card">
-              <h2>Two-factor authentication</h2>
-              <p>
-                Status:{" "}
-                {status.totp_enabled ? (
-                  <strong>On</strong>
-                ) : (
-                  <strong>Off</strong>
-                )}
-                {status.totp_enabled && (
-                  <span className="muted"> · {status.backup_codes_remaining} backup code(s) left</span>
-                )}
-              </p>
-              <p className="hint">
-                With 2FA on, signing in needs your password plus a 6-digit code from an authenticator app on your phone
-                such as Google Authenticator.
-              </p>
+              <div className="setting">
+                <div className="setting-text">
+                  <h2>Two-factor authentication</h2>
+                  <p className="hint" style={{ marginTop: 0 }}>
+                    Signing in needs your password plus a 6-digit code from Google Authenticator on your phone.
+                  </p>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <span className={`status-pill ${status.totp_enabled ? "on" : "off"}`}>
+                    {status.totp_enabled ? "On" : "Off"}
+                  </span>
+                  {status.totp_enabled && (
+                    <div className="hint">{status.backup_codes_remaining} backup code(s) left</div>
+                  )}
+                </div>
+              </div>
+              <hr className="divider" />
 
               {newCodes && <BackupCodes codes={newCodes} username={user.username} onDone={() => setNewCodes(null)} />}
 
               {!status.totp_enabled && mode === null && !newCodes && (
                 <button className="btn" onClick={() => setMode("setup-password")}>
-                  Turn on two-factor authentication
+                  <Icon name="shield" /> Turn on two-factor authentication
                 </button>
               )}
 
@@ -248,15 +247,26 @@ export default function Security() {
 
               {mode === "setup-scan" && setup && (
                 <form onSubmit={confirmSetup}>
-                  <p>1. In your authenticator app, add an account and scan this QR code:</p>
-                  <img src={setup.qr_data_url} alt="QR code for the authenticator app" width="200" height="200" className="qr" />
-                  <p className="hint">
-                    Can't scan? Enter this key manually instead: <code className="key">{setup.secret}</code>
-                  </p>
-                  <p>2. Enter the 6-digit code the app shows:</p>
-                  <div className="field" style={{ maxWidth: 200 }}>
-                    <input type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code}
-                      onChange={(e) => setCode(e.target.value)} required />
+                  <div className="steps">
+                    <span className="step-n">1</span>
+                    <div>
+                      <strong>Scan the QR code</strong>
+                      <p className="hint" style={{ marginTop: 4 }}>
+                        In Google Authenticator tap <strong>+</strong>, then <strong>Scan a QR code</strong>.
+                      </p>
+                      <img src={setup.qr_data_url} alt="QR code for the authenticator app" width="200" height="200" className="qr" />
+                      <p className="hint">
+                        Can't scan? Enter this key instead: <code className="key">{setup.secret}</code>
+                      </p>
+                    </div>
+                    <span className="step-n">2</span>
+                    <div>
+                      <strong>Enter the 6-digit code the app shows</strong>
+                      <div className="field" style={{ maxWidth: 220, marginTop: 10 }}>
+                        <input className="code-input" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6}
+                          placeholder="000000" value={code} onChange={(e) => setCode(e.target.value)} required />
+                      </div>
+                    </div>
                   </div>
                   {tfError && <div className="error-msg">{tfError}</div>}
                   <div className="row-actions">
@@ -305,7 +315,7 @@ export default function Security() {
             {(status.email_sending_configured || status.recovery_email) && (
             <div className="card">
               <h2>Recovery email</h2>
-              <p className="hint" style={{ marginTop: -6 }}>
+              <p className="hint" style={{ marginTop: 0 }}>
                 A second email address, used to reset your password if you forget it, and to alert you about
                 important changes to your account.
               </p>
@@ -369,8 +379,17 @@ export default function Security() {
             )}
 
             <div className="card">
-              <h2>Password</h2>
-              <Link className="btn secondary" to="/change-password">Change password</Link>
+              <div className="setting">
+                <div className="setting-text">
+                  <h2>Password</h2>
+                  <p className="hint" style={{ marginTop: 0 }}>
+                    Use a long password you don't use anywhere else. Changing it signs out your other devices.
+                  </p>
+                </div>
+                <Link className="btn secondary" to="/change-password">
+                  <Icon name="key" /> Change password
+                </Link>
+              </div>
             </div>
           </>
         )}
