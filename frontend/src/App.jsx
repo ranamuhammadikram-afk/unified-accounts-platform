@@ -35,17 +35,28 @@ function RootRedirect() {
 }
 
 function ChooseBusiness() {
-  const { businesses } = useAuth();
+  const { businesses, logout } = useAuth();
   return (
     <div className="centered-page">
-      <div className="card" style={{ maxWidth: 420, width: "100%" }}>
+      <div className="card" style={{ maxWidth: 460, width: "100%" }}>
+        <div className="eyebrow">Welcome</div>
         <h2>Choose a business</h2>
+        <p className="hint" style={{ marginBottom: 22 }}>Select which business's accounts you want to work on.</p>
         <div className="stack">
           {businesses.map((b) => (
-            <Link key={b.id} className="btn secondary" to={`/b/${b.slug}/entry`}>
-              {b.name} <span className="muted">({b.role})</span>
+            <Link key={b.id} className="choice" to={`/b/${b.slug}/entry`}>
+              <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <span className="monogram">{b.name.slice(0, 1).toUpperCase()}</span>
+                <strong>{b.name}</strong>
+              </span>
+              <span className="tag plain muted">{String(b.role || "").replace(/_/g, " ")}</span>
             </Link>
           ))}
+        </div>
+        <div className="auth-links">
+          <button type="button" className="link" onClick={logout}>
+            Log out
+          </button>
         </div>
       </div>
     </div>
