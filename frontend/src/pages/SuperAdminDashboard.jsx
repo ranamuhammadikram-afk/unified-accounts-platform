@@ -4,27 +4,26 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext.jsx";
+import { TopBar, TopLink, PageHead, Figure, Icon } from "../components/ui.jsx";
+import { fmt, firstOfMonthStr, todayStr, niceDate, niceDateTime, greeting, humanize } from "../format.js";
+import { pdfHeader, pdfFooter, tableStyle, GREEN } from "../pdfBrand.js";
 
-function fmt(n) {
-  return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
+const NUM_COLS = { 1: {}, 2: {}, 3: {}, 4: {}, 5: {}, 6: {}, 7: {}, 8: {} };
+Object.keys(NUM_COLS).forEach((k) => (NUM_COLS[k] = { halign: "right" }));
 
-function firstOfMonthStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
-}
-function todayStr() {
-  const d = new Date();
-  const tz = d.getTimezoneOffset() * 60000;
-  return new Date(d - tz).toISOString().slice(0, 10);
+// The API's grand total has no cash/card split, so add it up from the per-business rows.
+function withCashCard(aggregate) {
+  const sum = (key) => aggregate.perBusiness.reduce((s, b) => s + Number(b[key] || 0), 0);
+  return { ...aggregate.grandTotal, salesCash: sum("salesCash"), salesCard: sum("salesCard") };
 }
 
 export default function SuperAdminDashboard() {
-  const { user, businesses, refreshBusinesses, logout } = useAuth();
+  const { user, businesses, refreshBusinesses } = useAuth();
 
   const [bizError, setBizError] = useState("");
   const [newBiz, setNewBiz] = useState({ name: "", slug: "", currency: "SAR", timezone: "Asia/Riyadh" });
   const [creatingBiz, setCreatingBiz] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
 
   const [range, setRange] = useState({ from: firstOfMonthStr(), to: todayStr() });
   const [aggregate, setAggregate] = useState(null);
@@ -34,6 +33,7 @@ export default function SuperAdminDashboard() {
   const [auditEntries, setAuditEntries] = useState([]);
   const [auditError, setAuditError] = useState("");
   const [auditLoading, setAuditLoading] = useState(false);
+  const [auditShown, setAuditShown] = useState(10);
 
   const loadAggregate = useCallback(async () => {
     setAggLoading(true);
@@ -73,6 +73,7 @@ export default function SuperAdminDashboard() {
     try {
       await api.post("/api/businesses", newBiz);
       setNewBiz({ name: "", slug: "", currency: "SAR", timezone: "Asia/Riyadh" });
+      setShowAdd(false);
       refreshBusinesses();
     } catch (err) {
       setBizError(err.message || "Could not create business.");
@@ -90,13 +91,14 @@ export default function SuperAdminDashboard() {
     }
   }
 
+  const currencies = [...new Set(businesses.map((b) => b.currency || "SAR"))];
+  const currency = currencies.length === 1 ? currencies[0] : "";
+  const rangeLabel = `${niceDate(range.from)} – ${niceDate(range.to)}`;
+
   function exportAggregatePdf() {
     if (!aggregate) return;
     const doc = new jsPDF();
-    doc.setFontSize(14);
-    doc.text("Unified Accounts Platform — Aggregate Report", 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Range: ${aggregate.from} to ${aggregate.to}`, 14, 23);
+    const y = pdfHeader(doc, "Aggregate Report — All Businesses", `${niceDate(aggregate.from)} to ${niceDate(aggregate.to)}`);
 
     const body = aggregate.perBusiness.map((b) => [
       b.businessName,
@@ -109,216 +111,248 @@ export default function SuperAdminDashboard() {
       fmt(b.outflow),
       fmt(b.net),
     ]);
+    const g = withCashCard(aggregate);
     doc.autoTable({
-      startY: 28,
+      ...tableStyle({ columnStyles: NUM_COLS }),
+      startY: y,
       head: [["Business", "Cash", "Card", "Sales", "Expense", "Fixed", "Salary", "Outflow", "Net"]],
       body: body.length ? body : [["No data in this range.", "", "", "", "", "", "", "", ""]],
-      theme: "grid",
-      headStyles: { fillColor: [29, 111, 82] },
-      styles: { fontSize: 9 },
+      foot: [["Total", fmt(g.salesCash), fmt(g.salesCard), fmt(g.sales), fmt(g.expense), fmt(g.fixedCost), fmt(g.salary), fmt(g.outflow), fmt(g.net)]],
+      footStyles: { fillColor: [244, 236, 221], textColor: GREEN, fontStyle: "bold" },
     });
-
-    const g = aggregate.grandTotal;
-    doc.autoTable({
-      startY: doc.lastAutoTable.finalY + 10,
-      head: [["Grand total", "Sales", "Expense", "Fixed", "Salary", "Outflow", "Net"]],
-      body: [["All businesses", fmt(g.sales), fmt(g.expense), fmt(g.fixedCost), fmt(g.salary), fmt(g.outflow), fmt(g.net)]],
-      theme: "grid",
-      headStyles: { fillColor: [21, 79, 59] },
-    });
-
+    pdfFooter(doc);
     doc.save(`aggregate-${aggregate.from}-to-${aggregate.to}.pdf`);
   }
 
+  const firstName = String(user.full_name || user.username).split(/\s+/)[0];
+  const g = aggregate ? withCashCard(aggregate) : null;
+
   return (
     <>
-      <header className="appbar">
-        <div>
-          <h1>Unified Accounts Platform</h1>
-          <div className="sub">Super admin dashboard</div>
-        </div>
-        <div className="right">
-          <Link className="btnlike" to="/security">
-            Security
-          </Link>
-          <span className="who">{user.full_name || user.username}</span>
-          <button onClick={logout}>Log out</button>
-        </div>
-      </header>
+      <TopBar context="Owner overview">
+        <TopLink to="/admin">Overview</TopLink>
+      </TopBar>
 
       <main>
         {!user.totp_enabled && (
           <div className="notice">
-            <strong>Protect the owner account.</strong> Two-factor authentication is off. Turn it on with Google
-            Authenticator on the <Link to="/security">Security page</Link>.
+            <Icon name="shield" />
+            <div>
+              <strong>Protect the owner account.</strong> Two-factor authentication is off. Turn it on with Google
+              Authenticator on the <Link to="/security">Security page</Link>.
+            </div>
           </div>
         )}
-        <div className="card">
-          <h2>Businesses</h2>
-          {bizError && <div className="error-msg">{bizError}</div>}
-          <div className="stack">
-            {businesses.map((b) => (
-              <div className="userRow" key={b.id}>
-                <div>
-                  <div className="uname">
-                    {b.name} <span className="muted">({b.slug})</span>{" "}
-                    {!b.is_active && <span className="badge" style={{ background: "#94a3b8" }}>inactive</span>}
-                  </div>
-                  <div className="hint">{b.currency || "SAR"} · {b.timezone || "Asia/Riyadh"}</div>
-                </div>
-                <div className="row-actions">
-                  <Link className="btn small secondary" to={`/b/${b.slug}/entry`}>
-                    Open
-                  </Link>
-                  <Link className="btn small secondary" to={`/b/${b.slug}/users`}>
-                    Users
-                  </Link>
-                  <Link className="btn small secondary" to={`/b/${b.slug}/audit`}>
-                    Audit
-                  </Link>
-                  <button className="btn small ghost" type="button" onClick={() => toggleActive(b)}>
-                    {b.is_active ? "Deactivate" : "Activate"}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
 
-          <h3 style={{ marginTop: 18 }}>Add a business</h3>
-          <form onSubmit={handleCreateBusiness}>
-            <div className="grid">
-              <div className="field">
-                <label>Name</label>
-                <input value={newBiz.name} onChange={(e) => setNewBiz({ ...newBiz, name: e.target.value })} required />
-              </div>
-              <div className="field">
-                <label>Slug (used in the URL, lowercase, no spaces)</label>
-                <input value={newBiz.slug} onChange={(e) => setNewBiz({ ...newBiz, slug: e.target.value })} required />
-              </div>
-            </div>
-            <div className="grid">
-              <div className="field">
-                <label>Currency</label>
-                <input value={newBiz.currency} onChange={(e) => setNewBiz({ ...newBiz, currency: e.target.value })} />
-              </div>
-              <div className="field">
-                <label>Timezone</label>
-                <input value={newBiz.timezone} onChange={(e) => setNewBiz({ ...newBiz, timezone: e.target.value })} />
-              </div>
-            </div>
-            <button className="btn" type="submit" disabled={creatingBiz}>
-              {creatingBiz ? "Creating…" : "Create business"}
-            </button>
-          </form>
+        <PageHead
+          eyebrow={rangeLabel}
+          title={`${greeting()}, ${firstName}`}
+          sub={`${businesses.length} ${businesses.length === 1 ? "business" : "businesses"} · combined results for the period`}
+        >
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label htmlFor="from">From</label>
+            <input id="from" type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} />
+          </div>
+          <div className="field" style={{ marginBottom: 0 }}>
+            <label htmlFor="to">To</label>
+            <input id="to" type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} />
+          </div>
+          <button className="btn secondary" type="button" onClick={loadAggregate} disabled={aggLoading} aria-label="Refresh">
+            <Icon name="refresh" />
+          </button>
+          <button className="btn" type="button" onClick={exportAggregatePdf} disabled={!aggregate}>
+            <Icon name="download" /> Export PDF
+          </button>
+        </PageHead>
+
+        {aggError && <div className="error-msg">{aggError}</div>}
+
+        <div className="figures">
+          <Figure label="Sales" dot="sales" currency={currency} value={g?.sales} sub={g ? `Cash ${fmt(g.salesCash)} · Card ${fmt(g.salesCard)}` : " "} />
+          <Figure label="Expenses" dot="expense" currency={currency} value={g?.expense} sub="Consumables & running costs" />
+          <Figure label="Fixed + salary" dot="fixed" currency={currency} value={g ? g.fixedCost + g.salary : 0} sub={g ? `Fixed ${fmt(g.fixedCost)} · Salary ${fmt(g.salary)}` : " "} />
+          <Figure label="Net" currency={currency} value={g?.net} keyFigure sub={g && g.sales ? `${((g.net / g.sales) * 100).toFixed(1)}% of sales` : "—"} />
         </div>
 
-        <div className="card">
-          <h2>Aggregate report — all businesses</h2>
-          <div className="toolbar">
-            <div className="field">
-              <label>From</label>
-              <input type="date" value={range.from} onChange={(e) => setRange({ ...range, from: e.target.value })} />
-            </div>
-            <div className="field">
-              <label>To</label>
-              <input type="date" value={range.to} onChange={(e) => setRange({ ...range, to: e.target.value })} />
-            </div>
-            <button className="btn secondary" type="button" onClick={loadAggregate} disabled={aggLoading}>
-              {aggLoading ? "Loading…" : "Refresh"}
-            </button>
-            <button className="btn" type="button" onClick={exportAggregatePdf} disabled={!aggregate}>
-              Export PDF
-            </button>
+        <section className="section">
+          <div className="section-head">
+            <h2 className="section-title">By business</h2>
+            <span className="section-note">{aggLoading ? "Updating…" : rangeLabel}</span>
           </div>
-          {aggError && <div className="error-msg">{aggError}</div>}
-
-          {aggregate && (
-            <>
-              <div className="summary-grid" style={{ marginBottom: 14 }}>
-                <div className="stat sales">
-                  <div className="label">Total sales</div>
-                  <div className="value">{fmt(aggregate.grandTotal.sales)}</div>
-                </div>
-                <div className="stat expense">
-                  <div className="label">Expenses</div>
-                  <div className="value">{fmt(aggregate.grandTotal.expense)}</div>
-                </div>
-                <div className="stat fixed">
-                  <div className="label">Fixed + salary</div>
-                  <div className="value">{fmt(aggregate.grandTotal.fixedCost + aggregate.grandTotal.salary)}</div>
-                </div>
-                <div className="stat net">
-                  <div className="label">Net</div>
-                  <div className="value">{fmt(aggregate.grandTotal.net)}</div>
-                </div>
-              </div>
-              <div className="table-scroll">
-                <table>
-                  <thead>
+          <div className="card flush">
+            <div className="table-scroll table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Business</th>
+                    <th className="num">Cash</th>
+                    <th className="num">Card</th>
+                    <th className="num">Sales</th>
+                    <th className="num">Expense</th>
+                    <th className="num">Fixed</th>
+                    <th className="num">Salary</th>
+                    <th className="num">Net</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!aggregate || aggregate.perBusiness.length === 0 ? (
                     <tr>
-                      <th>Business</th>
-                      <th className="num">Cash</th>
-                      <th className="num">Card</th>
-                      <th className="num">Sales</th>
-                      <th className="num">Expense</th>
-                      <th className="num">Fixed</th>
-                      <th className="num">Salary</th>
-                      <th className="num">Net</th>
+                      <td colSpan={8} className="empty">
+                        {aggregate ? "No transactions in this range." : "Loading…"}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {aggregate.perBusiness.length === 0 ? (
-                      <tr>
-                        <td colSpan={8} className="empty">
-                          No transactions in this range.
-                        </td>
+                  ) : (
+                    aggregate.perBusiness.map((b) => (
+                      <tr key={b.businessId}>
+                        <td data-label="Business" className="strong">{b.businessName}</td>
+                        <td className="num" data-label="Cash">{fmt(b.salesCash)}</td>
+                        <td className="num" data-label="Card">{fmt(b.salesCard)}</td>
+                        <td className="num" data-label="Sales">{fmt(b.sales)}</td>
+                        <td className="num" data-label="Expense">{fmt(b.expense)}</td>
+                        <td className="num" data-label="Fixed">{fmt(b.fixedCost)}</td>
+                        <td className="num" data-label="Salary">{fmt(b.salary)}</td>
+                        <td className={`num strong${b.net < 0 ? " neg" : ""}`} data-label="Net">{fmt(b.net)}</td>
                       </tr>
-                    ) : (
-                      aggregate.perBusiness.map((b) => (
-                        <tr key={b.businessId}>
-                          <td data-label="Business">{b.businessName}</td>
-                          <td className="num" data-label="Cash">{fmt(b.salesCash)}</td>
-                          <td className="num" data-label="Card">{fmt(b.salesCard)}</td>
-                          <td className="num" data-label="Sales">{fmt(b.sales)}</td>
-                          <td className="num" data-label="Expense">{fmt(b.expense)}</td>
-                          <td className="num" data-label="Fixed">{fmt(b.fixedCost)}</td>
-                          <td className="num" data-label="Salary">{fmt(b.salary)}</td>
-                          <td className="num" data-label="Net">{fmt(b.net)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )}
-        </div>
-
-        <div className="card">
-          <h2>Global audit trail</h2>
-          {auditError && <div className="error-msg">{auditError}</div>}
-          {auditLoading ? (
-            <div className="empty">Loading…</div>
-          ) : auditEntries.length === 0 ? (
-            <div className="empty">No activity recorded yet.</div>
-          ) : (
-            <div className="stack">
-              {auditEntries.slice(0, 30).map((e) => (
-                <div className="userRow" key={e.id}>
-                  <div>
-                    <div className="uname">
-                      {e.action.replace("_", " ")} {e.entity_type.replace(/_/g, " ")} #{e.entity_id}{" "}
-                      <span className="muted">
-                        by {e.performed_by || "system"} in {e.business_name || "—"}
-                      </span>
-                    </div>
-                    <div className="hint">{new Date(e.created_at).toLocaleString()}</div>
-                  </div>
-                </div>
-              ))}
+                    ))
+                  )}
+                </tbody>
+                {aggregate && aggregate.perBusiness.length > 1 && (
+                  <tfoot>
+                    <tr>
+                      <td>Total</td>
+                      <td className="num" data-label="Cash">{fmt(g.salesCash)}</td>
+                      <td className="num" data-label="Card">{fmt(g.salesCard)}</td>
+                      <td className="num" data-label="Sales">{fmt(g.sales)}</td>
+                      <td className="num" data-label="Expense">{fmt(g.expense)}</td>
+                      <td className="num" data-label="Fixed">{fmt(g.fixedCost)}</td>
+                      <td className="num" data-label="Salary">{fmt(g.salary)}</td>
+                      <td className={`num${g.net < 0 ? " neg" : ""}`} data-label="Net">{fmt(g.net)}</td>
+                    </tr>
+                  </tfoot>
+                )}
+              </table>
             </div>
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="section-head">
+            <h2 className="section-title">Businesses</h2>
+            <button className="btn secondary small" type="button" onClick={() => setShowAdd(!showAdd)}>
+              <Icon name="plus" /> {showAdd ? "Close" : "Add a business"}
+            </button>
+          </div>
+          {bizError && <div className="error-msg">{bizError}</div>}
+
+          {showAdd && (
+            <form className="card" onSubmit={handleCreateBusiness}>
+              <h3>New business</h3>
+              <div className="grid">
+                <div className="field">
+                  <label htmlFor="biz-name">Name</label>
+                  <input id="biz-name" value={newBiz.name} onChange={(e) => setNewBiz({ ...newBiz, name: e.target.value })} required />
+                </div>
+                <div className="field">
+                  <label htmlFor="biz-slug">Short link name</label>
+                  <input id="biz-slug" value={newBiz.slug} placeholder="e.g. sultan-restaurant" onChange={(e) => setNewBiz({ ...newBiz, slug: e.target.value })} required />
+                  <div className="hint">Used in the web address — lowercase, no spaces.</div>
+                </div>
+                <div className="field">
+                  <label htmlFor="biz-cur">Currency</label>
+                  <input id="biz-cur" value={newBiz.currency} onChange={(e) => setNewBiz({ ...newBiz, currency: e.target.value })} />
+                </div>
+                <div className="field">
+                  <label htmlFor="biz-tz">Timezone</label>
+                  <input id="biz-tz" value={newBiz.timezone} onChange={(e) => setNewBiz({ ...newBiz, timezone: e.target.value })} />
+                </div>
+              </div>
+              <div className="row-actions">
+                <button className="btn" type="submit" disabled={creatingBiz}>
+                  {creatingBiz ? "Creating…" : "Create business"}
+                </button>
+                <button className="btn ghost" type="button" onClick={() => setShowAdd(false)}>
+                  Cancel
+                </button>
+              </div>
+            </form>
           )}
-        </div>
+
+          <div className="card flush">
+            {businesses.length === 0 ? (
+              <div className="empty">No businesses yet. Add your first one above.</div>
+            ) : (
+              <div className="list">
+                {businesses.map((b) => (
+                  <div className={`list-row${b.is_active ? "" : " inactive"}`} key={b.id}>
+                    <div className="list-main">
+                      <div className="monogram">{b.name.slice(0, 1).toUpperCase()}</div>
+                      <div>
+                        <div className="list-title">
+                          {b.name} {!b.is_active && <span className="tag plain muted">Inactive</span>}
+                        </div>
+                        <div className="list-meta">
+                          /{b.slug} · {b.currency || "SAR"} · {b.timezone || "Asia/Riyadh"}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="list-actions">
+                      <Link className="btn small" to={`/b/${b.slug}/entry`}>
+                        Open
+                      </Link>
+                      <Link className="btn small secondary" to={`/b/${b.slug}/users`}>
+                        Users
+                      </Link>
+                      <Link className="btn small secondary" to={`/b/${b.slug}/audit`}>
+                        Audit
+                      </Link>
+                      <button className="btn small ghost" type="button" onClick={() => toggleActive(b)}>
+                        {b.is_active ? "Deactivate" : "Activate"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="section-head">
+            <h2 className="section-title">Recent activity</h2>
+            <span className="section-note">All businesses</span>
+          </div>
+          {auditError && <div className="error-msg">{auditError}</div>}
+          <div className="card flush">
+            {auditLoading ? (
+              <div className="empty">Loading…</div>
+            ) : auditEntries.length === 0 ? (
+              <div className="empty">No activity recorded yet.</div>
+            ) : (
+              <>
+                <ul className="activity">
+                  {auditEntries.slice(0, auditShown).map((e) => (
+                    <li key={e.id}>
+                      <span className={`bullet ${e.action}`} />
+                      <span className="what">
+                        <strong>{humanize(e.action)}</strong> {humanize(e.entity_type)} #{e.entity_id} by{" "}
+                        {e.performed_by || "system"}
+                        {e.business_name ? ` · ${e.business_name}` : ""}
+                      </span>
+                      <span className="when">{niceDateTime(e.created_at)}</span>
+                    </li>
+                  ))}
+                </ul>
+                {auditEntries.length > auditShown && (
+                  <div className="card-pad" style={{ borderTop: "1px solid var(--line)", textAlign: "center" }}>
+                    <button className="link" type="button" onClick={() => setAuditShown(auditShown + 20)}>
+                      Show more
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </section>
       </main>
     </>
   );
