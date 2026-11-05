@@ -4,6 +4,9 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { api } from "../api";
+import { PageHead, Figure, TypeTag, Icon } from "../components/ui.jsx";
+import { fmt, thisMonthStr, niceMonth, niceDate } from "../format.js";
+import { pdfHeader, pdfSectionTitle, pdfFooter, tableStyle } from "../pdfBrand.js";
 
 const TYPE_LABEL = { fixed_cost: "Fixed cost", salary: "Salary" };
 
@@ -17,14 +20,6 @@ const EXPENSE_CATEGORY_LABEL = {
 };
 const EXPENSE_CATEGORY_ORDER = ["supplies", "utilities", "maintenance", "transport", "marketing", "other"];
 
-function thisMonthStr() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
-
-function fmt(n) {
-  return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
 
 function entryDate(e) {
   const raw = e.occurred_on;
@@ -84,15 +79,15 @@ function buildPnl(totals) {
 // shading the section header.
 function pnlPdfRow(row, revenue) {
   if (row.kind === "section") {
-    return [{ content: row.label, colSpan: 3, styles: { fontStyle: "bold", fillColor: [230, 242, 236] } }];
+    return [{ content: row.label.toUpperCase(), colSpan: 3, styles: { fontStyle: "bold", fontSize: 8, textColor: [134, 101, 58], fillColor: [250, 247, 240] } }];
   }
   const bold = row.kind === "subtotal" || row.kind === "net" || row.kind === "revenue";
   const styles = bold ? { fontStyle: "bold" } : {};
   const label = (row.indent ? "    " : "") + row.label;
   return [
     { content: label, styles },
-    { content: fmt(row.amount), styles },
-    { content: pct(row.amount, revenue), styles },
+    { content: fmt(row.amount), styles: { ...styles, halign: "right" } },
+    { content: pct(row.amount, revenue), styles: { ...styles, halign: "right" } },
   ];
 }
 
@@ -124,15 +119,14 @@ export default function MonthlyReport() {
     if (!data) return;
     const doc = new jsPDF();
     const currency = business.currency || "SAR";
-    doc.setFontSize(14);
-    doc.text(`${business.name} — Monthly Report`, 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Month: ${data.month}`, 14, 23);
+    let y = pdfHeader(doc, `${business.name} — Monthly Report`, niceMonth(data.month));
+    const right = (...cols) => Object.fromEntries(cols.map((c) => [c, { halign: "right" }]));
 
     const t = data.totals;
     doc.autoTable({
-      startY: 28,
-      head: [["Metric", `Amount (${currency})`]],
+      ...tableStyle({ columnStyles: right(1), tableWidth: 110 }),
+      startY: y,
+      head: [["Summary", `Amount (${currency})`]],
       body: [
         ["Sales — Cash", fmt(t.salesCash)],
         ["Sales — Card", fmt(t.salesCard)],
@@ -141,26 +135,21 @@ export default function MonthlyReport() {
         ["Fixed Costs", fmt(t.fixedCost)],
         ["Salaries", fmt(t.salary)],
         ["Total Outflow", fmt(t.outflow)],
-        ["Net", fmt(t.net)],
+        [{ content: "Net", styles: { fontStyle: "bold" } }, { content: fmt(t.net), styles: { fontStyle: "bold" } }],
       ],
-      theme: "grid",
-      headStyles: { fillColor: [29, 111, 82] },
     });
 
     const pnl = buildPnl(t);
-    const pnlHeadingY = doc.lastAutoTable.finalY + 10;
-    doc.setFontSize(11);
-    doc.text("Profit & Loss Statement", 14, pnlHeadingY);
+    y = pdfSectionTitle(doc, "Profit & Loss Statement", doc.lastAutoTable.finalY + 12);
     doc.autoTable({
-      startY: pnlHeadingY + 4,
-      head: [["Line item", `Amount (${currency})`, "% of revenue"]],
+      ...tableStyle({ alternateRowStyles: {} }),
+      startY: y + 2,
+      head: [["Line item", { content: `Amount (${currency})`, styles: { halign: "right" } }, { content: "% of revenue", styles: { halign: "right" } }]],
       body: pnl.rows.map((r) => pnlPdfRow(r, pnl.revenue)),
-      theme: "grid",
-      headStyles: { fillColor: [29, 111, 82] },
     });
 
     const dailyBody = data.dailyBreakdown.map((d) => [
-      d.date,
+      niceDate(d.date),
       fmt(d.salesCash),
       fmt(d.salesCard),
       fmt(d.expense),
@@ -168,28 +157,26 @@ export default function MonthlyReport() {
       fmt(d.salary),
       fmt(d.net),
     ]);
+    y = pdfSectionTitle(doc, "Daily Breakdown", doc.lastAutoTable.finalY + 12);
     doc.autoTable({
-      startY: doc.lastAutoTable.finalY + 10,
+      ...tableStyle({ columnStyles: right(1, 2, 3, 4, 5, 6) }),
+      startY: y + 2,
       head: [["Date", "Cash Sale", "Card Sale", "Expenses", "Fixed", "Salary", "Net"]],
       body: dailyBody.length ? dailyBody : [["No entries this month.", "", "", "", "", "", ""]],
-      theme: "striped",
-      headStyles: { fillColor: [29, 111, 82] },
     });
 
     const detail = fixedSalaryDetail(data.entries);
-    const detailHeadingY = doc.lastAutoTable.finalY + 10;
-    doc.setFontSize(11);
-    doc.text("Fixed Cost, Salary & Maintenance Detail", 14, detailHeadingY);
+    y = pdfSectionTitle(doc, "Fixed Cost, Salary & Maintenance Detail", doc.lastAutoTable.finalY + 12);
     doc.autoTable({
-      startY: detailHeadingY + 4,
+      ...tableStyle({ columnStyles: right(3) }),
+      startY: y + 2,
       head: [["Date", "Type", "Detail", `Amount (${currency})`, "Description", "Entered by"]],
       body: detail.length
-        ? detail.map((d) => [d.date, d.type, d.detail, fmt(d.amount), d.description, d.enteredBy])
+        ? detail.map((d) => [niceDate(d.date), d.type, d.detail, fmt(d.amount), d.description, d.enteredBy])
         : [["No fixed cost or salary entries this month.", "", "", "", "", ""]],
-      theme: "grid",
-      headStyles: { fillColor: [29, 111, 82] },
     });
 
+    pdfFooter(doc);
     doc.save(`${business.slug}-monthly-${data.month}.pdf`);
   }
 
@@ -258,189 +245,233 @@ export default function MonthlyReport() {
   const detailRows = data ? fixedSalaryDetail(data.entries) : [];
   const pnl = data ? buildPnl(data.totals) : null;
 
+  const t = data?.totals;
+  const currency = business.currency || "SAR";
+
   return (
-    <div>
-      <div className="card">
-        <div className="toolbar">
-          <div className="field">
-            <label htmlFor="month">Month</label>
-            <input id="month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
-          </div>
-          <button className="btn secondary" type="button" onClick={load} disabled={loading}>
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-          <button className="btn" type="button" onClick={exportPdf} disabled={!data}>
-            Export PDF
-          </button>
-          <button className="btn secondary" type="button" onClick={exportExcel} disabled={!data}>
-            Export Excel
-          </button>
+    <>
+      <PageHead eyebrow={business.name} title="Monthly report" sub={niceMonth(month)}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="month">Month</label>
+          <input id="month" type="month" value={month} onChange={(e) => setMonth(e.target.value)} />
         </div>
-        {error && <div className="error-msg">{error}</div>}
-      </div>
+        <button className="btn secondary" type="button" onClick={load} disabled={loading} aria-label="Refresh">
+          <Icon name="refresh" />
+        </button>
+        <button className="btn secondary" type="button" onClick={exportExcel} disabled={!data}>
+          Excel
+        </button>
+        <button className="btn" type="button" onClick={exportPdf} disabled={!data}>
+          <Icon name="download" /> PDF
+        </button>
+      </PageHead>
+      {error && <div className="error-msg">{error}</div>}
 
       {data && (
         <>
-          <div className="card">
-            <h3>Summary</h3>
-            <div className="summary-grid">
-              <div className="stat sales">
-                <div className="label">Sales cash</div>
-                <div className="value">{fmt(data.totals.salesCash)}</div>
+          <div className="figures">
+            <Figure label="Sales" dot="sales" currency={currency} value={t.sales} sub={`Cash ${fmt(t.salesCash)} · Card ${fmt(t.salesCard)}`} />
+            <Figure label="Expenses" dot="expense" currency={currency} value={t.expense} sub={`${pct(t.expense, t.sales)} of sales`} />
+            <Figure label="Fixed + salary" dot="fixed" currency={currency} value={t.fixedCost + t.salary} sub={`Fixed ${fmt(t.fixedCost)} · Salary ${fmt(t.salary)}`} />
+            <Figure label="Net profit" currency={currency} value={t.net} keyFigure sub={t.sales ? `${pct(t.net, t.sales)} margin` : "No sales yet"} />
+          </div>
+
+          <div className="report-grid">
+            <section className="section">
+              <div className="section-head">
+                <h2 className="section-title">Profit &amp; loss</h2>
+                <span className="section-note">{niceMonth(data.month)}</span>
               </div>
-              <div className="stat sales">
-                <div className="label">Sales card</div>
-                <div className="value">{fmt(data.totals.salesCard)}</div>
+              <div className="card flush">
+                <div className="table-wrap">
+                  <table className="pnl-table">
+                    <thead>
+                      <tr>
+                        <th>Line item</th>
+                        <th className="num">Amount</th>
+                        <th className="num">% of revenue</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {pnl.rows.map((r, i) =>
+                        r.kind === "section" ? (
+                          <tr key={i} className="pnl-section">
+                            <td colSpan={3}>{r.label}</td>
+                          </tr>
+                        ) : (
+                          <tr
+                            key={i}
+                            className={
+                              r.kind === "net"
+                                ? `pnl-net ${r.amount >= 0 ? "positive" : "negative"}`
+                                : r.kind === "subtotal"
+                                ? "pnl-subtotal"
+                                : r.kind === "revenue"
+                                ? "pnl-revenue"
+                                : ""
+                            }
+                          >
+                            <td className={r.indent ? "pnl-indent" : ""}>{r.label}</td>
+                            <td className="num">{fmt(r.amount)}</td>
+                            <td className="num">{pct(r.amount, pnl.revenue)}</td>
+                          </tr>
+                        )
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-              <div className="stat sales">
-                <div className="label">Total sales</div>
-                <div className="value">{fmt(data.totals.sales)}</div>
+            </section>
+
+            <section className="section">
+              <div className="section-head">
+                <h2 className="section-title">Where the money went</h2>
               </div>
-              <div className="stat expense">
-                <div className="label">Expenses</div>
-                <div className="value">{fmt(data.totals.expense)}</div>
+              <div className="card">
+                <Breakdown totals={t} />
               </div>
-              <div className="stat fixed">
-                <div className="label">Fixed costs</div>
-                <div className="value">{fmt(data.totals.fixedCost)}</div>
-              </div>
-              <div className="stat salary">
-                <div className="label">Salaries</div>
-                <div className="value">{fmt(data.totals.salary)}</div>
-              </div>
-              <div className="stat">
-                <div className="label">Total outflow</div>
-                <div className="value">{fmt(data.totals.outflow)}</div>
-              </div>
-              <div className="stat net">
-                <div className="label">Net</div>
-                <div className="value">{fmt(data.totals.net)}</div>
-              </div>
+            </section>
+          </div>
+
+          <section className="section">
+            <div className="section-head">
+              <h2 className="section-title">Daily breakdown</h2>
+              <span className="section-note">
+                {data.dailyBreakdown.length} {data.dailyBreakdown.length === 1 ? "day" : "days"} with entries
+              </span>
             </div>
-          </div>
-
-          <div className="card">
-            <h3>Profit &amp; Loss Statement</h3>
-            <div className="table-scroll">
-              <table className="pnl-table">
-                <thead>
-                  <tr>
-                    <th>Line item</th>
-                    <th className="num">Amount</th>
-                    <th className="num">% of revenue</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pnl.rows.map((r, i) =>
-                    r.kind === "section" ? (
-                      <tr key={i} className="pnl-section">
-                        <td colSpan={3}>{r.label}</td>
+            <div className="card flush">
+              {data.dailyBreakdown.length === 0 ? (
+                <div className="empty">No entries this month yet.</div>
+              ) : (
+                <div className="table-scroll table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th className="num">Cash sale</th>
+                        <th className="num">Card sale</th>
+                        <th className="num">Expenses</th>
+                        <th className="num">Fixed</th>
+                        <th className="num">Salary</th>
+                        <th className="num">Net</th>
                       </tr>
-                    ) : (
-                      <tr
-                        key={i}
-                        className={
-                          r.kind === "net" ? `pnl-net ${r.amount >= 0 ? "positive" : "negative"}` : r.kind === "subtotal" ? "pnl-subtotal" : r.kind === "revenue" ? "pnl-revenue" : ""
-                        }
-                      >
-                        <td className={r.indent ? "pnl-indent" : ""}>{r.label}</td>
-                        <td className="num">{fmt(r.amount)}</td>
-                        <td className="num">{pct(r.amount, pnl.revenue)}</td>
+                    </thead>
+                    <tbody>
+                      {data.dailyBreakdown.map((d) => (
+                        <tr key={d.date}>
+                          <td data-label="Date" className="nowrap">{niceDate(d.date)}</td>
+                          <td className="num" data-label="Cash sale">{fmt(d.salesCash)}</td>
+                          <td className="num" data-label="Card sale">{fmt(d.salesCard)}</td>
+                          <td className="num" data-label="Expenses">{fmt(d.expense)}</td>
+                          <td className="num" data-label="Fixed">{fmt(d.fixedCost)}</td>
+                          <td className="num" data-label="Salary">{fmt(d.salary)}</td>
+                          <td className={`num strong${d.net < 0 ? " neg" : ""}`} data-label="Net">{fmt(d.net)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td>Month total</td>
+                        <td className="num" data-label="Cash sale">{fmt(t.salesCash)}</td>
+                        <td className="num" data-label="Card sale">{fmt(t.salesCard)}</td>
+                        <td className="num" data-label="Expenses">{fmt(t.expense)}</td>
+                        <td className="num" data-label="Fixed">{fmt(t.fixedCost)}</td>
+                        <td className="num" data-label="Salary">{fmt(t.salary)}</td>
+                        <td className={`num${t.net < 0 ? " neg" : ""}`} data-label="Net">{fmt(t.net)}</td>
                       </tr>
-                    )
-                  )}
-                </tbody>
-              </table>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
             </div>
-          </div>
+          </section>
 
-          <div className="card">
-            <h3>Daily breakdown</h3>
-            {data.dailyBreakdown.length === 0 ? (
-              <div className="empty">No entries this month yet.</div>
-            ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th className="num">Cash Sale</th>
-                      <th className="num">Card Sale</th>
-                      <th className="num">Expenses</th>
-                      <th className="num">Fixed</th>
-                      <th className="num">Salary</th>
-                      <th className="num">Net</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.dailyBreakdown.map((d) => (
-                      <tr key={d.date}>
-                        <td data-label="Date">{d.date}</td>
-                        <td className="num" data-label="Cash Sale">
-                          {fmt(d.salesCash)}
-                        </td>
-                        <td className="num" data-label="Card Sale">
-                          {fmt(d.salesCard)}
-                        </td>
-                        <td className="num" data-label="Expenses">
-                          {fmt(d.expense)}
-                        </td>
-                        <td className="num" data-label="Fixed">
-                          {fmt(d.fixedCost)}
-                        </td>
-                        <td className="num" data-label="Salary">
-                          {fmt(d.salary)}
-                        </td>
-                        <td className="num" data-label="Net">
-                          {fmt(d.net)}
-                        </td>
+          <section className="section">
+            <div className="section-head">
+              <h2 className="section-title">Fixed cost, salary &amp; maintenance detail</h2>
+            </div>
+            <div className="card flush">
+              {detailRows.length === 0 ? (
+                <div className="empty">No fixed cost or salary entries this month.</div>
+              ) : (
+                <div className="table-scroll table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Type</th>
+                        <th>Detail</th>
+                        <th className="num">Amount</th>
+                        <th>Note</th>
+                        <th>Entered by</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          <div className="card">
-            <h3>Fixed Cost, Salary &amp; Maintenance Detail</h3>
-            {detailRows.length === 0 ? (
-              <div className="empty">No fixed cost or salary entries this month.</div>
-            ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Date</th>
-                      <th>Type</th>
-                      <th>Detail</th>
-                      <th className="num">Amount</th>
-                      <th>Description</th>
-                      <th>Entered by</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {detailRows.map((d, i) => (
-                      <tr key={`${d.date}-${i}`}>
-                        <td data-label="Date">{d.date}</td>
-                        <td data-label="Type">
-                          <span className={`badge ${d.type === "Salary" ? "salary" : "fixed_cost"}`}>{d.type}</span>
-                        </td>
-                        <td data-label="Detail">{d.detail}</td>
-                        <td className="num" data-label="Amount">
-                          {fmt(d.amount)}
-                        </td>
-                        <td data-label="Description">{d.description}</td>
-                        <td data-label="Entered by">{d.enteredBy}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                    </thead>
+                    <tbody>
+                      {detailRows.map((d, i) => (
+                        <tr key={`${d.date}-${i}`}>
+                          <td data-label="Date" className="nowrap">{niceDate(d.date)}</td>
+                          <td data-label="Type">
+                            <TypeTag type={d.type === "Salary" ? "salary" : "fixed_cost"} label={d.type} />
+                          </td>
+                          <td data-label="Detail" style={{ textTransform: "capitalize" }}>{d.detail}</td>
+                          <td className="num" data-label="Amount">{fmt(d.amount)}</td>
+                          <td className="desc" data-label="Note">{d.description}</td>
+                          <td data-label="Entered by">{d.enteredBy}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
         </>
       )}
+    </>
+  );
+}
+
+// Horizontal bars showing how each cost line compares to revenue.
+function Breakdown({ totals }) {
+  const rows = [
+    { key: "expense", label: "Expenses", value: totals.expense },
+    { key: "fixed", label: "Fixed costs", value: totals.fixedCost },
+    { key: "salary", label: "Salaries", value: totals.salary },
+  ];
+  const max = Math.max(totals.sales, totals.outflow, 1);
+  return (
+    <div className="bars">
+      <div className="bar-row">
+        <div className="bar-label">
+          <span>
+            <span className="dot sales" /> Sales
+          </span>
+          <span className="num">{fmt(totals.sales)}</span>
+        </div>
+        <div className="bar-track">
+          <div className="bar-fill sales" style={{ width: `${(totals.sales / max) * 100}%` }} />
+        </div>
+      </div>
+      {rows.map((r) => (
+        <div className="bar-row" key={r.key}>
+          <div className="bar-label">
+            <span>
+              <span className={`dot ${r.key}`} /> {r.label}
+            </span>
+            <span className="num">
+              {fmt(r.value)} <span className="muted">· {pct(r.value, totals.sales)}</span>
+            </span>
+          </div>
+          <div className="bar-track">
+            <div className={`bar-fill ${r.key}`} style={{ width: `${(r.value / max) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+      <div className={`day-total${totals.net < 0 ? " neg" : ""}`} style={{ marginTop: 18 }}>
+        <span>Net profit</span>
+        <span>{fmt(totals.net)}</span>
+      </div>
     </div>
   );
 }
