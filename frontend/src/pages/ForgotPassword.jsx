@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api";
+import AuthLayout from "../components/AuthLayout.jsx";
 
 export default function ForgotPassword() {
   const [username, setUsername] = useState("");
@@ -24,12 +25,11 @@ export default function ForgotPassword() {
   }
 
   return (
-    <div className="centered-page">
-      <form className="card" style={{ maxWidth: 400, width: "100%" }} onSubmit={handleSubmit}>
+    <AuthLayout>
+      <form onSubmit={handleSubmit}>
+        <div className="eyebrow">Account recovery</div>
         <h2>Forgot password</h2>
-        <p className="hint" style={{ marginTop: -8, marginBottom: 18 }}>
-          Enter your username. A reset link will be sent to the recovery email confirmed on your account.
-        </p>
+        <p className="lede">Enter your username. A reset link will be sent to the recovery email confirmed on your account.</p>
         <div className="field">
           <label htmlFor="username">Username</label>
           <input
@@ -37,6 +37,7 @@ export default function ForgotPassword() {
             type="text"
             autoFocus
             autoComplete="username"
+            autoCapitalize="none"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
@@ -44,15 +45,15 @@ export default function ForgotPassword() {
         </div>
         {error && <div className="error-msg">{error}</div>}
         {message && <div className="success-msg">{message}</div>}
-        <button className="btn" type="submit" disabled={busy} style={{ width: "100%", marginTop: 8 }}>
+        <button className="btn" type="submit" disabled={busy}>
           {busy ? "Sending…" : "Send reset link"}
         </button>
-        <div style={{ textAlign: "center", marginTop: 14 }}>
+        <div className="auth-links">
           <Link to="/login" className="link">
             Back to sign in
           </Link>
         </div>
       </form>
-    </div>
+    </AuthLayout>
   );
 }
