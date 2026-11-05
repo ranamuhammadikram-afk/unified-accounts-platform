@@ -1,12 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useOutletContext } from "react-router-dom";
 import { api } from "../api";
-
-function describe(entry) {
-  const action = entry.action.replace("_", " ");
-  const entity = entry.entity_type.replace(/_/g, " ");
-  return `${action} ${entity} #${entry.entity_id}`;
-}
+import { PageHead } from "../components/ui.jsx";
+import { humanize, niceDateTime } from "../format.js";
 
 export default function AuditLog() {
   const { business } = useOutletContext();
@@ -33,45 +29,33 @@ export default function AuditLog() {
   }, [load]);
 
   return (
-    <div className="card">
-      <h2>Audit trail — {business.name}</h2>
-      <p className="hint" style={{ marginTop: -8 }}>
-        Every create, update, and delete performed in this business, most recent first.
-      </p>
+    <>
+      <PageHead eyebrow={business.name} title="Audit trail" sub="Every create, update and delete in this business, newest first. Click a line to see what changed." />
       {error && <div className="error-msg">{error}</div>}
-      {loading ? (
-        <div className="empty">Loading…</div>
-      ) : entries.length === 0 ? (
-        <div className="empty">No activity recorded yet.</div>
-      ) : (
-        <div className="stack">
-          {entries.map((e) => (
-            <div className="userRow" key={e.id} style={{ alignItems: "flex-start", cursor: "pointer" }} onClick={() => setExpanded(expanded === e.id ? null : e.id)}>
-              <div style={{ width: "100%" }}>
-                <div className="uname">
-                  {describe(e)} <span className="muted">by {e.performed_by || "system"}</span>
-                </div>
-                <div className="hint">{new Date(e.created_at).toLocaleString()}</div>
-                {expanded === e.id && e.changes && (
-                  <pre
-                    style={{
-                      background: "#fafbfc",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      padding: 10,
-                      marginTop: 8,
-                      fontSize: 11.5,
-                      overflowX: "auto",
-                    }}
-                  >
-                    {JSON.stringify(e.changes, null, 2)}
-                  </pre>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+      <div className="card flush">
+        {loading ? (
+          <div className="empty">Loading…</div>
+        ) : entries.length === 0 ? (
+          <div className="empty">No activity recorded yet.</div>
+        ) : (
+          <ul className="activity">
+            {entries.map((e) => (
+              <li
+                key={e.id}
+                className={e.changes ? "clickable" : ""}
+                onClick={() => setExpanded(expanded === e.id ? null : e.id)}
+              >
+                <span className={`bullet ${e.action}`} />
+                <span className="what">
+                  <strong>{humanize(e.action)}</strong> {humanize(e.entity_type)} #{e.entity_id} by {e.performed_by || "system"}
+                </span>
+                <span className="when">{niceDateTime(e.created_at)}</span>
+                {expanded === e.id && e.changes && <pre className="changes">{JSON.stringify(e.changes, null, 2)}</pre>}
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
   );
 }
