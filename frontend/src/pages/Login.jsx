@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { api } from "../api";
 import { useNavigate, Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
+import AuthLayout from "../components/AuthLayout.jsx";
 
 export default function Login() {
   const { login, completeMfa } = useAuth();
@@ -73,46 +74,49 @@ export default function Login() {
 
   if (mfaToken) {
     return (
-      <div className="centered-page">
-        <form className="card" style={{ maxWidth: 380, width: "100%" }} onSubmit={handleCode}>
+      <AuthLayout>
+        <form onSubmit={handleCode}>
+          <div className="eyebrow">Step 2 of 2</div>
           <h2>Two-factor authentication</h2>
-          <p className="hint" style={{ marginTop: -8, marginBottom: 18 }}>
-            Enter the 6-digit code from your authenticator app. If you don't have your phone, enter one of your
-            backup codes instead.
+          <p className="lede">
+            Enter the 6-digit code from Google Authenticator. Without your phone, use one of your backup codes.
           </p>
           <div className="field">
-            <label htmlFor="code">Code</label>
+            <label htmlFor="code">Verification code</label>
             <input
               id="code"
+              className="code-input"
               type="text"
               autoFocus
               autoComplete="one-time-code"
               inputMode="text"
               maxLength={12}
+              placeholder="000 000"
               value={code}
               onChange={(e) => setCode(e.target.value)}
               required
             />
           </div>
           {error && <div className="error-msg">{error}</div>}
-          <button className="btn" type="submit" disabled={busy} style={{ width: "100%", marginTop: 8 }}>
+          <button className="btn" type="submit" disabled={busy}>
             {busy ? "Checking…" : "Verify and sign in"}
           </button>
-          <button type="button" className="btn ghost" onClick={backToPassword} style={{ width: "100%", marginTop: 8 }}>
-            Back
-          </button>
+          <div className="auth-links">
+            <button type="button" className="link" onClick={backToPassword}>
+              Back
+            </button>
+          </div>
         </form>
-      </div>
+      </AuthLayout>
     );
   }
 
   return (
-    <div className="centered-page">
-      <form className="card" style={{ maxWidth: 380, width: "100%" }} onSubmit={handlePassword}>
-        <h2>Unified Accounts Platform</h2>
-        <p className="hint" style={{ marginTop: -8, marginBottom: 18 }}>
-          Sign in to enter and review your business accounts.
-        </p>
+    <AuthLayout>
+      <form onSubmit={handlePassword}>
+        <div className="eyebrow">Welcome back</div>
+        <h2>Sign in</h2>
+        <p className="lede">Enter and review the accounts for your businesses.</p>
         <div className="field">
           <label htmlFor="username">Username</label>
           <input
@@ -120,6 +124,8 @@ export default function Login() {
             type="text"
             autoFocus
             autoComplete="username"
+            autoCapitalize="none"
+            spellCheck={false}
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             required
@@ -137,17 +143,17 @@ export default function Login() {
           />
         </div>
         {error && <div className="error-msg">{error}</div>}
-        <button className="btn" type="submit" disabled={busy} style={{ width: "100%", marginTop: 8 }}>
+        <button className="btn" type="submit" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </button>
         {canResetByEmail && (
-          <div style={{ textAlign: "center", marginTop: 14 }}>
+          <div className="auth-links">
             <Link to="/forgot-password" className="link">
               Forgot password?
             </Link>
           </div>
         )}
       </form>
-    </div>
+    </AuthLayout>
   );
 }
