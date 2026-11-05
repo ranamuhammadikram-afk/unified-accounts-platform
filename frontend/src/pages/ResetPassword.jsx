@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api";
+import AuthLayout from "../components/AuthLayout.jsx";
 
 export default function ResetPassword() {
   const [params] = useSearchParams();
@@ -35,25 +36,25 @@ export default function ResetPassword() {
 
   if (done) {
     return (
-      <div className="centered-page">
-        <div className="card" style={{ maxWidth: 400, width: "100%" }}>
-          <h2>Password changed</h2>
-          <p>Your new password is saved. Sign in with it now.</p>
-          <Link className="btn" to="/login" style={{ display: "block", textAlign: "center" }}>
-            Go to sign in
-          </Link>
-        </div>
-      </div>
+      <AuthLayout>
+        <div className="eyebrow">All set</div>
+        <h2>Password changed</h2>
+        <p className="lede">Your new password is saved. Sign in with it now.</p>
+        <Link className="btn" to="/login">
+          Go to sign in
+        </Link>
+      </AuthLayout>
     );
   }
 
   const fromLink = Boolean(params.get("token"));
 
   return (
-    <div className="centered-page">
-      <form className="card" style={{ maxWidth: 400, width: "100%" }} onSubmit={handleSubmit}>
+    <AuthLayout>
+      <form onSubmit={handleSubmit}>
+        <div className="eyebrow">Account recovery</div>
         <h2>Reset password</h2>
-        <p className="hint" style={{ marginTop: -8, marginBottom: 18 }}>Choose a new password for your account.</p>
+        <p className="lede">Choose a new password for your account.</p>
         {!fromLink && (
           <div className="field">
             <label htmlFor="token">Reset code from the email</label>
@@ -72,6 +73,7 @@ export default function ResetPassword() {
             minLength={8}
             required
           />
+          <div className="hint">At least 8 characters.</div>
         </div>
         <div className="field">
           <label htmlFor="confirmPassword">Confirm new password</label>
@@ -86,15 +88,15 @@ export default function ResetPassword() {
           />
         </div>
         {error && <div className="error-msg">{error}</div>}
-        <button className="btn" type="submit" disabled={busy} style={{ width: "100%", marginTop: 8 }}>
+        <button className="btn" type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save new password"}
         </button>
-        <div style={{ textAlign: "center", marginTop: 14 }}>
+        <div className="auth-links">
           <Link to="/forgot-password" className="link">
             Request a new link
           </Link>
         </div>
       </form>
-    </div>
+    </AuthLayout>
   );
 }
