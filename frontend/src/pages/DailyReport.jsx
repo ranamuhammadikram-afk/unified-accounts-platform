@@ -4,17 +4,21 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import * as XLSX from "xlsx";
 import { api } from "../api";
+import { PageHead, Figure, TypeTag, Icon, TYPE_LABEL } from "../components/ui.jsx";
+import { fmt, todayStr, niceDate } from "../format.js";
+import { pdfHeader, pdfSectionTitle, pdfFooter, tableStyle } from "../pdfBrand.js";
 
-function todayStr() {
-  const d = new Date();
-  const tz = d.getTimezoneOffset() * 60000;
-  return new Date(d - tz).toISOString().slice(0, 10);
-}
+const EXPENSE_CATEGORY_LABEL = {
+  supplies: "Supplies",
+  utilities: "Utilities",
+  maintenance: "Maintenance",
+  transport: "Transport",
+  marketing: "Marketing",
+  other: "Other",
+};
 
-const TYPE_LABEL = { sales: "Sales", expense: "Expense", fixed_cost: "Fixed cost", salary: "Salary" };
-
-function fmt(n) {
-  return Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function detailOf(e) {
+  return e.payment_method || e.fixed_cost_type || (e.expense_category && EXPENSE_CATEGORY_LABEL[e.expense_category]) || "";
 }
 
 export default function DailyReport() {
@@ -45,15 +49,13 @@ export default function DailyReport() {
     if (!data) return;
     const doc = new jsPDF();
     const currency = business.currency || "SAR";
-    doc.setFontSize(14);
-    doc.text(`${business.name} — Daily Report`, 14, 16);
-    doc.setFontSize(10);
-    doc.text(`Date: ${data.date}`, 14, 23);
+    let y = pdfHeader(doc, `${business.name} — Daily Report`, niceDate(data.date));
 
     const t = data.totals;
     doc.autoTable({
-      startY: 28,
-      head: [["Metric", `Amount (${currency})`]],
+      ...tableStyle({ columnStyles: { 1: { halign: "right" } }, tableWidth: 110 }),
+      startY: y,
+      head: [["Summary", `Amount (${currency})`]],
       body: [
         ["Sales — Cash", fmt(t.salesCash)],
         ["Sales — Card", fmt(t.salesCard)],
@@ -62,29 +64,28 @@ export default function DailyReport() {
         ["Fixed Costs", fmt(t.fixedCost)],
         ["Salaries", fmt(t.salary)],
         ["Total Outflow", fmt(t.outflow)],
-        ["Net", fmt(t.net)],
+        [{ content: "Net", styles: { fontStyle: "bold" } }, { content: fmt(t.net), styles: { fontStyle: "bold" } }],
       ],
-      theme: "grid",
-      headStyles: { fillColor: [29, 111, 82] },
     });
 
     const entriesBody = data.entries.map((e) => [
       TYPE_LABEL[e.type] || e.type,
-      e.payment_method || (e.fixed_cost_type ? e.fixed_cost_type : "—"),
+      detailOf(e) || "—",
       e.type === "sales" && e.payment_method === "cash" ? fmt(e.amount) : "",
       e.type === "sales" && e.payment_method === "card" ? fmt(e.amount) : "",
       e.type !== "sales" ? fmt(e.amount) : "",
       e.description || "",
       e.entered_by,
     ]);
+    y = pdfSectionTitle(doc, "Entries", doc.lastAutoTable.finalY + 12);
     doc.autoTable({
-      startY: doc.lastAutoTable.finalY + 10,
+      ...tableStyle({ columnStyles: { 2: { halign: "right" }, 3: { halign: "right" }, 4: { halign: "right" } } }),
+      startY: y + 2,
       head: [["Type", "Detail", "Cash Sale", "Card Sale", `Amount (${currency})`, "Description", "Entered by"]],
       body: entriesBody.length ? entriesBody : [["No entries for this date.", "", "", "", "", "", ""]],
-      theme: "striped",
-      headStyles: { fillColor: [29, 111, 82] },
     });
 
+    pdfFooter(doc);
     doc.save(`${business.slug}-daily-${data.date}.pdf`);
   }
 
@@ -120,7 +121,7 @@ export default function DailyReport() {
     ];
     const entriesRows = data.entries.map((e) => [
       TYPE_LABEL[e.type] || e.type,
-      e.payment_method || e.fixed_cost_type || "",
+      detailOf(e),
       e.type === "sales" && e.payment_method === "cash" ? Number(e.amount) : "",
       e.type === "sales" && e.payment_method === "card" ? Number(e.amount) : "",
       e.type !== "sales" ? Number(e.amount) : "",
@@ -144,112 +145,103 @@ export default function DailyReport() {
     XLSX.writeFile(wb, `${business.slug}-daily-${data.date}.xlsx`);
   }
 
+  const t = data?.totals;
+  const currency = business.currency || "SAR";
+  const isToday = date === todayStr();
+
   return (
-    <div>
-      <div className="card">
-        <div className="toolbar">
-          <div className="field">
-            <label htmlFor="date">Date</label>
-            <input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
-          </div>
-          <button className="btn secondary" type="button" onClick={load} disabled={loading}>
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-          <button className="btn" type="button" onClick={exportPdf} disabled={!data}>
-            Export PDF
-          </button>
-          <button className="btn secondary" type="button" onClick={exportExcel} disabled={!data}>
-            Export Excel
-          </button>
+    <>
+      <PageHead eyebrow={business.name} title="Daily report" sub={isToday ? `Today · ${niceDate(date)}` : niceDate(date)}>
+        <div className="field" style={{ marginBottom: 0 }}>
+          <label htmlFor="date">Date</label>
+          <input id="date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </div>
-        {error && <div className="error-msg">{error}</div>}
-      </div>
+        <button className="btn secondary" type="button" onClick={load} disabled={loading} aria-label="Refresh">
+          <Icon name="refresh" />
+        </button>
+        <button className="btn secondary" type="button" onClick={exportExcel} disabled={!data}>
+          Excel
+        </button>
+        <button className="btn" type="button" onClick={exportPdf} disabled={!data}>
+          <Icon name="download" /> PDF
+        </button>
+      </PageHead>
+      {error && <div className="error-msg">{error}</div>}
 
       {data && (
         <>
-          <div className="card">
-            <h3>Summary</h3>
-            <div className="summary-grid">
-              <div className="stat sales">
-                <div className="label">Sales cash</div>
-                <div className="value">{fmt(data.totals.salesCash)}</div>
-              </div>
-              <div className="stat sales">
-                <div className="label">Sales card</div>
-                <div className="value">{fmt(data.totals.salesCard)}</div>
-              </div>
-              <div className="stat sales">
-                <div className="label">Total sales</div>
-                <div className="value">{fmt(data.totals.sales)}</div>
-              </div>
-              <div className="stat expense">
-                <div className="label">Expenses</div>
-                <div className="value">{fmt(data.totals.expense)}</div>
-              </div>
-              <div className="stat fixed">
-                <div className="label">Fixed costs</div>
-                <div className="value">{fmt(data.totals.fixedCost)}</div>
-              </div>
-              <div className="stat salary">
-                <div className="label">Salaries</div>
-                <div className="value">{fmt(data.totals.salary)}</div>
-              </div>
-              <div className="stat">
-                <div className="label">Total outflow</div>
-                <div className="value">{fmt(data.totals.outflow)}</div>
-              </div>
-              <div className="stat net">
-                <div className="label">Net</div>
-                <div className="value">{fmt(data.totals.net)}</div>
-              </div>
-            </div>
+          <div className="figures">
+            <Figure label="Sales" dot="sales" currency={currency} value={t.sales} sub={`Cash ${fmt(t.salesCash)} · Card ${fmt(t.salesCard)}`} />
+            <Figure label="Expenses" dot="expense" currency={currency} value={t.expense} sub="Consumables" />
+            <Figure label="Fixed + salary" dot="fixed" currency={currency} value={t.fixedCost + t.salary} sub={`Fixed ${fmt(t.fixedCost)} · Salary ${fmt(t.salary)}`} />
+            <Figure label="Net" currency={currency} value={t.net} keyFigure sub={`Total outflow ${fmt(t.outflow)}`} />
           </div>
 
-          <div className="card">
-            <h3>Entries</h3>
-            {data.entries.length === 0 ? (
-              <div className="empty">No entries for this date yet.</div>
-            ) : (
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Type</th>
-                      <th>Detail</th>
-                      <th className="num">Cash Sale</th>
-                      <th className="num">Card Sale</th>
-                      <th className="num">Amount</th>
-                      <th>Description</th>
-                      <th>Entered by</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.entries.map((e) => (
-                      <tr key={e.id}>
-                        <td data-label="Type">
-                          <span className={`badge ${e.type}`}>{TYPE_LABEL[e.type] || e.type}</span>
-                        </td>
-                        <td data-label="Detail">{e.payment_method || e.fixed_cost_type || "—"}</td>
-                        <td className="num" data-label="Cash Sale">
-                          {e.type === "sales" && e.payment_method === "cash" ? fmt(e.amount) : ""}
-                        </td>
-                        <td className="num" data-label="Card Sale">
-                          {e.type === "sales" && e.payment_method === "card" ? fmt(e.amount) : ""}
-                        </td>
-                        <td className="num" data-label="Amount">
-                          {e.type !== "sales" ? fmt(e.amount) : ""}
-                        </td>
-                        <td data-label="Description">{e.description || <span className="muted">—</span>}</td>
-                        <td data-label="Entered by">{e.entered_by}</td>
+          <section className="section">
+            <div className="section-head">
+              <h2 className="section-title">Entries</h2>
+              <span className="section-note">
+                {data.entries.length} {data.entries.length === 1 ? "entry" : "entries"}
+              </span>
+            </div>
+            <div className="card flush">
+              {data.entries.length === 0 ? (
+                <div className="empty">No entries for this date yet.</div>
+              ) : (
+                <div className="table-scroll table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Type</th>
+                        <th>Detail</th>
+                        <th className="num">Cash sale</th>
+                        <th className="num">Card sale</th>
+                        <th className="num">Amount</th>
+                        <th>Note</th>
+                        <th>Entered by</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
+                    </thead>
+                    <tbody>
+                      {data.entries.map((e) => (
+                        <tr key={e.id}>
+                          <td data-label="Type">
+                            <TypeTag type={e.type} />
+                          </td>
+                          <td data-label="Detail" style={{ textTransform: "capitalize" }}>
+                            {detailOf(e) || <span className="muted">—</span>}
+                          </td>
+                          <td className="num" data-label="Cash sale">
+                            {e.type === "sales" && e.payment_method === "cash" ? fmt(e.amount) : ""}
+                          </td>
+                          <td className="num" data-label="Card sale">
+                            {e.type === "sales" && e.payment_method === "card" ? fmt(e.amount) : ""}
+                          </td>
+                          <td className="num" data-label="Amount">
+                            {e.type !== "sales" ? fmt(e.amount) : ""}
+                          </td>
+                          <td className="desc" data-label="Note">
+                            {e.description || <span className="muted">—</span>}
+                          </td>
+                          <td data-label="Entered by">{e.entered_by}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={2}>Total</td>
+                        <td className="num" data-label="Cash sale">{fmt(t.salesCash)}</td>
+                        <td className="num" data-label="Card sale">{fmt(t.salesCard)}</td>
+                        <td className="num" data-label="Outflow">{fmt(t.outflow)}</td>
+                        <td colSpan={2}></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
         </>
       )}
-    </div>
+    </>
   );
 }
