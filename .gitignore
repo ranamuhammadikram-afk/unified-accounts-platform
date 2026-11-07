@@ -6,3 +6,5 @@ frontend/.env
 backend/CREDENTIALS_DO_NOT_COMMIT.txt
 backend/import-review.json
 legacy-data/
+frontend/public/icons/
+frontend/public/manifest-*.webmanifest
