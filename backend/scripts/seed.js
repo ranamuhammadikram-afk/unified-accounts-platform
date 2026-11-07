@@ -65,8 +65,8 @@ async function ensureSuperAdmin(username, fullName) {
 }
 
 async function main() {
-  const khurais = await ensureBusiness("Bofiya Khurais Camp", "khurais-camp");
-  const hofuf = await ensureBusiness("Matam Al Taiba Hofuf", "hofuf");
+  const khurais = await ensureBusiness("Bofiyah Khurais Camp", "khurais-camp");
+  const hofuf = await ensureBusiness("Mataam Al Tayeba Hofuf", "hofuf");
 
   const owner = await ensureSuperAdmin("owner_admin", "Ikram (Owner)");
   const khuraisManager = await ensureUser("khurais_manager", "Khurais Camp Manager");
@@ -85,8 +85,8 @@ async function main() {
 
   for (const [label, result] of [
     ["Super Admin (you) — sees both businesses", owner],
-    ["Business Admin — Bofiya Khurais Camp only", khuraisManager],
-    ["Business Admin — Matam Al Taiba Hofuf only", hofufManager],
+    ["Business Admin — Bofiyah Khurais Camp only", khuraisManager],
+    ["Business Admin — Mataam Al Tayeba Hofuf only", hofufManager],
   ]) {
     lines.push(`${label}`);
     lines.push(`  username: ${result.user.username}`);
