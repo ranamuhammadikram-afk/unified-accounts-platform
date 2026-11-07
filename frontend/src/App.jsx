@@ -1,6 +1,7 @@
 import React from "react";
 import { Routes, Route, Navigate, Link } from "react-router-dom";
 import { useAuth } from "./context/AuthContext.jsx";
+import { BizIcon } from "./components/ui.jsx";
 
 import Login from "./pages/Login.jsx";
 import ChangePassword from "./pages/ChangePassword.jsx";
@@ -46,7 +47,7 @@ function ChooseBusiness() {
           {businesses.map((b) => (
             <Link key={b.id} className="choice" to={`/b/${b.slug}/entry`}>
               <span style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span className="monogram">{b.name.slice(0, 1).toUpperCase()}</span>
+                <BizIcon slug={b.slug} size={40} />
                 <strong>{b.name}</strong>
               </span>
               <span className="tag plain muted">{String(b.role || "").replace(/_/g, " ")}</span>
