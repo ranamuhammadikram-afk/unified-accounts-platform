@@ -1,7 +1,7 @@
 # Unified Accounts Platform — Deployment Guide
 
 This is the online, multi-user replacement for the two offline HTML apps
-(Bofuyih Khurais Camp and Mattam Altayaba Hofuf). It's a complete full-stack
+(Bofiyah Khurais Camp and Mataam Al Tayeba Hofuf). It's a complete full-stack
 application:
 
 - **PostgreSQL** — one shared database, businesses kept apart by a `business_id`
@@ -98,8 +98,8 @@ docker compose exec backend npm run seed
 This prints (once) the username and temporary password for:
 
 - **Super Admin** (`owner_admin`) — you.
-- **Business Admin — Bofuyih Khurais Camp** (`khurais_manager`).
-- **Business Admin — Mattam Altayaba Hofuf** (`hofuf_manager`).
+- **Business Admin — Bofiyah Khurais Camp** (`khurais_manager`).
+- **Business Admin — Mataam Al Tayeba Hofuf** (`hofuf_manager`).
 
 It's safe to re-run this command later — it skips any account that already
 exists rather than resetting it. Copy these credentials somewhere safe right
