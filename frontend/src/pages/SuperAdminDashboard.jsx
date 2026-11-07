@@ -82,6 +82,21 @@ export default function SuperAdminDashboard() {
     }
   }
 
+  async function renameBusiness(biz) {
+    const input = window.prompt(`New name for ${biz.name}:`, biz.name);
+    if (input === null) return;
+    const name = input.trim().replace(/\s+/g, " ");
+    if (!name || name === biz.name) return;
+    setBizError("");
+    try {
+      await api.patch(`/api/businesses/${biz.id}`, { name });
+      refreshBusinesses();
+      loadAggregate();
+    } catch (err) {
+      setBizError(err.message || "Could not rename business.");
+    }
+  }
+
   async function toggleActive(biz) {
     try {
       await api.patch(`/api/businesses/${biz.id}`, { is_active: !biz.is_active });
@@ -305,6 +320,9 @@ export default function SuperAdminDashboard() {
                       <Link className="btn small secondary" to={`/b/${b.slug}/audit`}>
                         Audit
                       </Link>
+                      <button className="btn small ghost" type="button" onClick={() => renameBusiness(b)}>
+                        Rename
+                      </button>
                       <button className="btn small ghost" type="button" onClick={() => toggleActive(b)}>
                         {b.is_active ? "Deactivate" : "Activate"}
                       </button>
