@@ -4,7 +4,7 @@ import jsPDF from "jspdf";
 import "jspdf-autotable";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext.jsx";
-import { TopBar, TopLink, PageHead, Figure, Icon } from "../components/ui.jsx";
+import { TopBar, TopLink, PageHead, Figure, Icon, BizIcon } from "../components/ui.jsx";
 import { fmt, firstOfMonthStr, todayStr, niceDate, niceDateTime, greeting, humanize } from "../format.js";
 import { pdfHeader, pdfFooter, tableStyle, GREEN } from "../pdfBrand.js";
 
@@ -300,7 +300,7 @@ export default function SuperAdminDashboard() {
                 {businesses.map((b) => (
                   <div className={`list-row${b.is_active ? "" : " inactive"}`} key={b.id}>
                     <div className="list-main">
-                      <div className="monogram">{b.name.slice(0, 1).toUpperCase()}</div>
+                      <BizIcon slug={b.slug} size={40} />
                       <div>
                         <div className="list-title">
                           {b.name} {!b.is_active && <span className="tag plain muted">Inactive</span>}
