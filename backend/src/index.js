@@ -98,6 +98,18 @@ async function ensureSchema() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_auth_tokens_lookup ON auth_tokens (purpose, token_hash)`);
     // eslint-disable-next-line no-console
     console.log("[schema] account security tables ready.");
+
+    // One-time spelling fix for the two original businesses. It only touches rows that still
+    // carry an old spelling, so it does nothing once they're corrected or renamed by hand.
+    const NAME_FIXES = [
+      ["Bofiyah Khurais Camp", ["Bofiya Khurais Camp", "Bofuyih Khurais Camp"]],
+      ["Mataam Al Tayeba Hofuf", ["Matam Al Taiba Hofuf", "Mattam Altayaba Hofuf"]],
+    ];
+    for (const [correct, oldNames] of NAME_FIXES) {
+      const r = await pool.query(`UPDATE businesses SET name = $1 WHERE name = ANY($2::text[])`, [correct, oldNames]);
+      // eslint-disable-next-line no-console
+      if (r.rowCount) console.log(`[schema] business renamed to "${correct}".`);
+    }
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[schema] Could not apply schema updates:", err);
