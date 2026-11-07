@@ -404,6 +404,22 @@ input.code-input{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospac
 .bar-fill.sales{background:var(--c-sales);} .bar-fill.expense{background:var(--c-expense);}
 .bar-fill.fixed{background:var(--c-fixed);} .bar-fill.salary{background:var(--c-salary);}
 
+/* ---------- App icons & "Add to Home Screen" ---------- */
+.app-icon{display:inline-block; line-height:0; border-radius:22%; overflow:hidden; box-shadow:0 1px 2px rgba(23,32,28,.18);}
+.app-icon svg{width:100%; height:100%; display:block;}
+.list-row.inactive .app-icon{filter:grayscale(1); opacity:.55;}
+.modal-backdrop{position:fixed; inset:0; z-index:90; background:rgba(15,41,33,.38); display:flex; align-items:center; justify-content:center; padding:16px; animation:menuIn .15s var(--ease);}
+.modal{position:relative; width:100%; max-width:400px; background:var(--surface); border-radius:var(--radius-lg); border:1px solid var(--line); box-shadow:0 30px 60px -20px rgba(15,41,33,.45); padding:28px 26px 24px;}
+.modal h2{font-family:var(--serif); font-weight:500; font-size:26px; margin:14px 0 6px; text-align:center;}
+.modal .hint{text-align:center;}
+.modal-close{position:absolute; top:12px; right:12px; background:none; border:none; padding:6px; border-radius:var(--radius); color:var(--muted); cursor:pointer; line-height:0;}
+.modal-close:hover{background:var(--ivory); color:var(--ink);}
+.install-preview{display:flex; flex-direction:column; align-items:center; gap:8px;}
+.install-preview .app-icon{box-shadow:0 8px 20px -8px rgba(15,41,33,.5);}
+.install-preview span{font-size:12px; color:var(--ink-2);}
+.install-steps{margin:16px 0 4px; padding-left:22px; font-size:13.5px; color:var(--ink-2); line-height:1.7;}
+.install-steps svg{vertical-align:-3px; color:var(--ink);}
+
 /* ---------- Responsive ---------- */
 @media (max-width:900px){
   .figures{grid-template-columns:repeat(2,minmax(0,1fr));}
