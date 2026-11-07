@@ -29,7 +29,7 @@ export default function BusinessLayout() {
 
   return (
     <>
-      <TopBar context={business.name}>
+      <TopBar context={business.name} slug={business.slug}>
         {user.is_super_admin && <TopLink to="/admin">Overview</TopLink>}
         {!user.is_super_admin && businesses.length > 1 && <TopLink to="/choose-business">Switch business</TopLink>}
       </TopBar>
