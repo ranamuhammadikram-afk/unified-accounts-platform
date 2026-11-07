@@ -1,7 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { createPortal } from "react-dom";
+import { Link, NavLink, useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext.jsx";
 import { fmt, initials, humanize } from "../format.js";
+import { businessIcon, plateSvg, mainSvg, MAIN_ICON } from "../appIcons.js";
+import { useAppIdentity, canPromptInstall, promptInstall, isStandalone, deviceKind } from "../appIdentity.js";
 
 /* ---------- Icons (thin-line, 24px grid) ---------- */
 const paths = {
@@ -22,6 +25,9 @@ const paths = {
   plus: "M12 5v14M5 12h14",
   check: "M5 12.5 10 17 19 7",
   chevron: "M3 4.5 6 7.5 9 4.5",
+  phone: "M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2Zm3 17h2",
+  share: "M12 3v12M8 7l4-4 4 4M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7",
+  close: "M6 6l12 12M18 6 6 18",
 };
 
 export function Icon({ name, ...rest }) {
@@ -39,11 +45,36 @@ export function Icon({ name, ...rest }) {
   );
 }
 
+/* ---------- App / business icons ---------- */
+// The business's own icon (plate, fork and knife on its colour), the same picture as its home-screen icon.
+export function BizIcon({ slug, size = 40, className = "" }) {
+  const icon = businessIcon(slug);
+  return (
+    <span
+      className={`app-icon ${className}`}
+      style={{ width: size, height: size, flex: `0 0 ${size}px` }}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: plateSvg(icon.bg, { rounded: true }) }}
+    />
+  );
+}
+
+export function MainIcon({ size = 40 }) {
+  return (
+    <span
+      className="app-icon"
+      style={{ width: size, height: size, flex: `0 0 ${size}px` }}
+      aria-hidden="true"
+      dangerouslySetInnerHTML={{ __html: mainSvg(MAIN_ICON.bg, { rounded: true }) }}
+    />
+  );
+}
+
 /* ---------- Brand ---------- */
-export function Brand({ context }) {
+export function Brand({ context, slug }) {
   return (
     <div className="brand">
-      <div className="brand-mark">U</div>
+      {slug ? <BizIcon slug={slug} size={34} /> : <div className="brand-mark">U</div>}
       <div className="brand-text">
         <span className="brand-name">Unified Accounts</span>
         {context && <span className="brand-context">{context}</span>}
@@ -55,7 +86,9 @@ export function Brand({ context }) {
 /* ---------- User menu ---------- */
 function UserMenu() {
   const { user, businesses, logout } = useAuth();
+  const { slug } = useParams();
   const [open, setOpen] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -104,8 +137,8 @@ function UserMenu() {
             <>
               <div className="menu-label">Businesses</div>
               {shown.map((b) => (
-                <Link key={b.id} to={`/b/${b.slug}/entry`} role="menuitem">
-                  <span className="dot sales" style={{ opacity: b.is_active === false ? 0.3 : 1 }} /> {b.name}
+                <Link key={b.id} to={`/b/${b.slug}/entry`} role="menuitem" style={{ opacity: b.is_active === false ? 0.5 : 1 }}>
+                  <BizIcon slug={b.slug} size={20} /> {b.name}
                 </Link>
               ))}
               <hr />
@@ -117,23 +150,111 @@ function UserMenu() {
           <Link to="/change-password" role="menuitem">
             <Icon name="key" width="16" height="16" /> Change password
           </Link>
+          {!isStandalone() && (
+            <button type="button" role="menuitem" onClick={() => setInstalling(true)}>
+              <Icon name="phone" width="16" height="16" /> Add to Home Screen
+            </button>
+          )}
           <hr />
           <button type="button" role="menuitem" onClick={logout}>
             <Icon name="logout" width="16" height="16" /> Log out
           </button>
         </div>
       )}
+      {installing && <InstallDialog slug={slug} onClose={() => setInstalling(false)} />}
     </div>
   );
 }
 
+/* ---------- "Add to Home Screen" help ---------- */
+function InstallDialog({ slug, onClose }) {
+  const icon = slug ? businessIcon(slug) : MAIN_ICON;
+  const name = slug ? icon.name === "Business Accounts" ? "this business" : icon.name : "the owner overview";
+  const kind = deviceKind();
+  const [canPrompt] = useState(canPromptInstall());
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    const esc = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", esc);
+    return () => document.removeEventListener("keydown", esc);
+  }, [onClose]);
+
+  async function install() {
+    const ok = await promptInstall();
+    if (ok) onClose();
+    else setMsg("Not installed. You can try again from this menu at any time.");
+  }
+
+  // Rendered into <body> so the dialog isn't trapped inside the sticky top bar.
+  return createPortal(
+    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal" role="dialog" aria-modal="true" aria-labelledby="install-title">
+        <button type="button" className="modal-close" aria-label="Close" onClick={onClose}>
+          <Icon name="close" width="18" height="18" />
+        </button>
+        <div className="install-preview">
+          {slug ? <BizIcon slug={slug} size={72} /> : <MainIcon size={72} />}
+          <span>{icon.short}</span>
+        </div>
+        <h2 id="install-title">Add to Home Screen</h2>
+        <p className="hint" style={{ marginTop: 0 }}>
+          Puts an icon for <strong>{name}</strong> on your {kind === "desktop" ? "computer" : "phone"} that opens it
+          directly, like an app. To add another business, open that business first and use this menu again.
+        </p>
+        {canPrompt ? (
+          <button type="button" className="btn block" onClick={install}>
+            <Icon name="download" /> Install
+          </button>
+        ) : kind === "ios" ? (
+          <ol className="install-steps">
+            <li>
+              Tap the <strong>Share</strong> button <Icon name="share" width="16" height="16" /> in Safari.
+            </li>
+            <li>
+              Choose <strong>Add to Home Screen</strong>.
+            </li>
+            <li>
+              Tap <strong>Add</strong>.
+            </li>
+          </ol>
+        ) : kind === "android" ? (
+          <ol className="install-steps">
+            <li>
+              Tap the <strong>⋮</strong> menu in Chrome.
+            </li>
+            <li>
+              Choose <strong>Add to Home screen</strong> (or <strong>Install app</strong>).
+            </li>
+            <li>
+              Tap <strong>Add</strong> / <strong>Install</strong>.
+            </li>
+          </ol>
+        ) : (
+          <ol className="install-steps">
+            <li>
+              In Chrome or Edge, click the <strong>install</strong> icon at the right end of the address bar.
+            </li>
+            <li>
+              Or open the browser menu and choose <strong>Install</strong> / <strong>Apps → Install this site as an app</strong>.
+            </li>
+          </ol>
+        )}
+        {msg && <div className="hint">{msg}</div>}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 /* ---------- Top bar ---------- */
-export function TopBar({ context, children }) {
+export function TopBar({ context, slug, children }) {
+  useAppIdentity(slug);
   return (
     <header className="topbar">
       <div className="topbar-inner">
         <Link to="/" aria-label="Home">
-          <Brand context={context} />
+          <Brand context={context} slug={slug} />
         </Link>
         <nav className="topnav">{children}</nav>
         <UserMenu />
