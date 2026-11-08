@@ -3,6 +3,7 @@ import { useOutletContext } from "react-router-dom";
 import { api } from "../api";
 import { useAuth } from "../context/AuthContext.jsx";
 import { PageHead, TypeTag, Toast } from "../components/ui.jsx";
+import { EntryDetail, InvoiceLinks, InvoiceManager } from "../components/invoices.jsx";
 import { fmt, isoDate as fmtDate, niceDate } from "../format.js";
 
 const TYPE_LABEL = { sales: "Sales", expense: "Expense", fixed_cost: "Fixed cost", salary: "Salary" };
@@ -39,6 +40,7 @@ export default function Records() {
       const qs = params.toString();
       const res = await api.get(`/api/businesses/${business.id}/transactions${qs ? `?${qs}` : ""}`);
       setRows(res.transactions);
+      return res.transactions;
     } catch (err) {
       setError(err.message || "Could not load records.");
     } finally {
@@ -76,8 +78,21 @@ export default function Records() {
       fixed_cost_type: row.fixed_cost_type || "rent",
       expense_category: row.expense_category || "supplies",
       description: row.description || "",
+      paid_by: row.type === "sales" ? "cash" : row.payment_method || "cash",
+      supplier_name: row.supplier_name || "",
+      invoice_number: row.invoice_number || "",
+      attachments: row.attachments || [],
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  const purchaseEdit = editing && (editing.type === "expense" || editing.type === "fixed_cost");
+
+  // After invoices change in the edit form, refresh the list and the form's invoice list.
+  async function refreshAttachments() {
+    const list = await load();
+    const row = (list || []).find((t) => t.id === editing.id);
+    if (row) setEditing((ed) => ed && { ...ed, attachments: row.attachments || [] });
   }
 
   async function saveEdit(e) {
@@ -88,9 +103,16 @@ export default function Records() {
       occurred_on: editing.occurred_on,
       amount: Number(editing.amount),
       description: editing.description || null,
-      payment_method: editing.type === "sales" ? editing.payment_method : null,
+      payment_method:
+        editing.type === "sales"
+          ? editing.payment_method
+          : editing.type === "expense" || editing.type === "fixed_cost"
+          ? editing.paid_by
+          : null,
       fixed_cost_type: editing.type === "fixed_cost" ? editing.fixed_cost_type : null,
       expense_category: editing.type === "expense" ? editing.expense_category : null,
+      supplier_name: purchaseEdit ? editing.supplier_name : null,
+      invoice_number: purchaseEdit ? editing.invoice_number : null,
     };
     try {
       await api.patch(`/api/businesses/${business.id}/transactions/${editing.id}`, payload);
@@ -218,15 +240,52 @@ export default function Records() {
               </div>
             )}
           </div>
+          {purchaseEdit && (
+            <div className="grid three">
+              <div className="field">
+                <label>Paid by</label>
+                <select value={editing.paid_by} onChange={(e) => setEditing({ ...editing, paid_by: e.target.value })}>
+                  <option value="cash">Cash</option>
+                  <option value="card">Card</option>
+                  <option value="bank">Bank transfer</option>
+                </select>
+              </div>
+              <div className="field">
+                <label>Supplier</label>
+                <input
+                  maxLength={120}
+                  value={editing.supplier_name}
+                  onChange={(e) => setEditing({ ...editing, supplier_name: e.target.value })}
+                />
+              </div>
+              <div className="field">
+                <label>Invoice no.</label>
+                <input
+                  maxLength={60}
+                  value={editing.invoice_number}
+                  onChange={(e) => setEditing({ ...editing, invoice_number: e.target.value })}
+                />
+              </div>
+            </div>
+          )}
           <div className="field">
-            <label>Note</label>
+            <label>{editing.type === "expense" ? "Description" : "Note"}</label>
             <textarea
               rows={2}
               maxLength={500}
+              required={editing.type === "expense"}
               value={editing.description}
               onChange={(e) => setEditing({ ...editing, description: e.target.value })}
             />
           </div>
+          {purchaseEdit && (
+            <InvoiceManager
+              businessId={business.id}
+              transactionId={editing.id}
+              attachments={editing.attachments}
+              onChanged={refreshAttachments}
+            />
+          )}
           <div className="row-actions">
             <button className="btn" type="submit">
               Save changes
@@ -261,7 +320,8 @@ export default function Records() {
                     <th>Type</th>
                     <th>Detail</th>
                     <th className="num">Amount</th>
-                    <th>Note</th>
+                    <th>Description</th>
+                    <th>Invoice</th>
                     <th>Entered by</th>
                     <th className="num">
                       <span className="sr-only">Actions</span>
@@ -275,15 +335,16 @@ export default function Records() {
                       <td data-label="Type">
                         <TypeTag type={row.type} />
                       </td>
-                      <td data-label="Detail" style={{ textTransform: "capitalize" }}>
-                        {row.payment_method ||
-                          row.fixed_cost_type ||
-                          (row.expense_category && EXPENSE_CATEGORY_LABEL[row.expense_category]) || <span className="muted">—</span>}
+                      <td data-label="Detail">
+                        <EntryDetail entry={row} />
                       </td>
                       <td className="num strong" data-label="Amount">
                         {fmt(row.amount)}
                       </td>
-                      <td className="desc" data-label="Note">{row.description || <span className="muted">—</span>}</td>
+                      <td className="desc" data-label="Description">{row.description || <span className="muted">—</span>}</td>
+                      <td data-label="Invoice">
+                        <InvoiceLinks businessId={business.id} attachments={row.attachments} />
+                      </td>
                       <td data-label="Entered by">{row.entered_by}</td>
                       <td className="actions-col">
                         {canTouch(row) ? (
