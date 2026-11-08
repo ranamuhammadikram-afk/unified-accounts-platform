@@ -70,10 +70,12 @@ CREATE TABLE IF NOT EXISTS transactions (
     type              TEXT NOT NULL CHECK (type IN ('sales', 'expense', 'fixed_cost', 'salary')),
     occurred_on       DATE NOT NULL,
     amount            NUMERIC(12,2) NOT NULL CHECK (amount >= 0),
-    payment_method    TEXT CHECK (payment_method IN ('cash', 'card') OR payment_method IS NULL),
+    payment_method    TEXT CHECK (payment_method IN ('cash', 'card', 'bank') OR payment_method IS NULL), -- sales: cash/card; expenses & fixed costs: cash/card/bank
     fixed_cost_type   TEXT CHECK (fixed_cost_type IN ('rent', 'maintenance', 'utilities', 'other') OR fixed_cost_type IS NULL),
     expense_category  TEXT CHECK (expense_category IN ('supplies', 'utilities', 'maintenance', 'transport', 'marketing', 'other') OR expense_category IS NULL),
     description       TEXT,
+    supplier_name     TEXT,   -- expenses and fixed costs: who it was bought from
+    invoice_number    TEXT,   -- expenses and fixed costs: the supplier's invoice number
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
     deleted_at        TIMESTAMPTZ
@@ -81,6 +83,22 @@ CREATE TABLE IF NOT EXISTS transactions (
 
 CREATE INDEX IF NOT EXISTS idx_transactions_business_date ON transactions (business_id, occurred_on) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_transactions_business_type_date ON transactions (business_id, type, occurred_on) WHERE deleted_at IS NULL;
+
+-- Purchase invoices (photos/PDFs) attached to expense and fixed-cost entries. The files live in
+-- Oracle Object Storage (see OCI_INVOICE_PAR_URL); this table keeps the record of each one.
+CREATE TABLE IF NOT EXISTS transaction_attachments (
+    id             BIGSERIAL PRIMARY KEY,
+    transaction_id BIGINT NOT NULL REFERENCES transactions(id),
+    business_id    BIGINT NOT NULL REFERENCES businesses(id),
+    object_key     TEXT NOT NULL,
+    file_name      TEXT NOT NULL,
+    content_type   TEXT NOT NULL,
+    size_bytes     INTEGER NOT NULL,
+    uploaded_by    BIGINT NOT NULL REFERENCES users(id),
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted_at     TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_attachments_transaction ON transaction_attachments (transaction_id) WHERE deleted_at IS NULL;
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id            BIGSERIAL PRIMARY KEY,
