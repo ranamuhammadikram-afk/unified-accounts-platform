@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { useOutletContext } from "react-router-dom";
 import { api } from "../api";
 import { PageHead, TypeTag, Icon } from "../components/ui.jsx";
+import { InvoicePicker, InvoiceLinks, uploadInvoice, useInvoiceStorage } from "../components/invoices.jsx";
 import { fmt, todayStr, niceDate } from "../format.js";
 
 const TYPES = [
@@ -44,6 +45,12 @@ export default function EntryForm() {
   const [fixedCostType, setFixedCostType] = useState("rent");
   const [expenseCategory, setExpenseCategory] = useState("supplies");
   const [description, setDescription] = useState("");
+  const [paidBy, setPaidBy] = useState("cash");
+  const [supplier, setSupplier] = useState("");
+  const [invoiceNo, setInvoiceNo] = useState("");
+  const [files, setFiles] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const storageOn = useInvoiceStorage();
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,6 +68,19 @@ export default function EntryForm() {
     loadDay();
   }, [loadDay]);
 
+  const loadSuppliers = useCallback(() => {
+    api
+      .get(`/api/businesses/${business.id}/transactions/suppliers`)
+      .then((r) => setSuppliers(r.suppliers || []))
+      .catch(() => {});
+  }, [business.id]);
+
+  useEffect(() => {
+    loadSuppliers();
+  }, [loadSuppliers]);
+
+  const purchase = type === "expense" || type === "fixed_cost";
+
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
@@ -74,14 +94,37 @@ export default function EntryForm() {
     if (type === "sales") payload.payment_method = paymentMethod;
     if (type === "fixed_cost") payload.fixed_cost_type = fixedCostType;
     if (type === "expense") payload.expense_category = expenseCategory;
+    if (purchase) {
+      payload.payment_method = paidBy;
+      payload.supplier_name = supplier.trim() || undefined;
+      payload.invoice_number = invoiceNo.trim() || undefined;
+    }
 
     setBusy(true);
     try {
-      await api.post(`/api/businesses/${business.id}/transactions`, payload);
-      setSuccess(`${TYPE_LABELS[type]} of ${currency} ${fmt(amount)} saved.`);
+      const res = await api.post(`/api/businesses/${business.id}/transactions`, payload);
+      let saved = `${TYPE_LABELS[type]} of ${currency} ${fmt(amount)} saved`;
+      const toUpload = purchase ? files : [];
+      let uploadError = "";
+      let uploaded = 0;
+      for (const f of toUpload) {
+        try {
+          await uploadInvoice(business.id, res.transaction.id, f);
+          uploaded += 1;
+        } catch (e) {
+          uploadError = `${f.name}: ${e.message}`;
+        }
+      }
+      if (uploaded) saved += ` with ${uploaded === 1 ? "its invoice" : `${uploaded} invoices`}`;
+      setSuccess(saved + ".");
+      if (uploadError) setError(`The entry is saved, but an invoice didn't upload (${uploadError}). You can add it from Records.`);
       setAmount("");
       setDescription("");
+      setSupplier("");
+      setInvoiceNo("");
+      setFiles([]);
       loadDay();
+      if (purchase && payload.supplier_name) loadSuppliers();
     } catch (err) {
       setError(err.message || "Could not save entry.");
     } finally {
@@ -187,19 +230,96 @@ export default function EntryForm() {
             )}
           </div>
 
+          {purchase && (
+            <>
+              <div className="field">
+                <label id="paid-label">Paid by</label>
+                <div className="segmented three" role="radiogroup" aria-labelledby="paid-label">
+                  {[
+                    ["cash", "Cash"],
+                    ["card", "Card"],
+                    ["bank", "Bank transfer"],
+                  ].map(([m, label]) => (
+                    <button
+                      key={m}
+                      type="button"
+                      role="radio"
+                      aria-checked={paidBy === m}
+                      className={paidBy === m ? "on" : ""}
+                      onClick={() => setPaidBy(m)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="grid">
+                <div className="field">
+                  <label htmlFor="supplier">
+                    Supplier <span className="muted">(optional)</span>
+                  </label>
+                  <input
+                    id="supplier"
+                    list="supplier-list"
+                    maxLength={120}
+                    autoComplete="off"
+                    placeholder="e.g. Al Othaim Markets"
+                    value={supplier}
+                    onChange={(e) => setSupplier(e.target.value)}
+                  />
+                  <datalist id="supplier-list">
+                    {suppliers.map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                </div>
+                <div className="field">
+                  <label htmlFor="invoice_no">
+                    Invoice no. <span className="muted">(optional)</span>
+                  </label>
+                  <input
+                    id="invoice_no"
+                    maxLength={60}
+                    autoComplete="off"
+                    placeholder="As printed on the invoice"
+                    value={invoiceNo}
+                    onChange={(e) => setInvoiceNo(e.target.value)}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
           <div className="field">
             <label htmlFor="description">
-              Note <span className="muted">(optional)</span>
+              {type === "expense" ? "Description" : "Note"}{" "}
+              {type !== "expense" && <span className="muted">(optional)</span>}
             </label>
             <textarea
               id="description"
-              rows={2}
+              rows={type === "expense" ? 3 : 2}
               maxLength={500}
-              placeholder={type === "salary" ? "e.g. October salary — Ahmed" : "What was this for?"}
+              required={type === "expense"}
+              placeholder={
+                type === "salary"
+                  ? "e.g. October salary — Ahmed"
+                  : type === "expense"
+                  ? "What was bought, e.g. rice 2 bags, cooking oil 4 L, cleaning supplies"
+                  : "What was this for?"
+              }
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
+
+          {purchase && storageOn !== false && (
+            <div className="field">
+              <label>
+                Purchase invoice <span className="muted">(optional)</span>
+              </label>
+              <InvoicePicker files={files} onChange={setFiles} disabled={busy || storageOn === null} />
+            </div>
+          )}
 
           {error && <div className="error-msg">{error}</div>}
           {success && (
@@ -260,7 +380,10 @@ export default function EntryForm() {
               {recent.map((e) => (
                 <li key={e.id}>
                   <TypeTag type={e.type} />
-                  <span className="num">{fmt(e.amount)}</span>
+                  <span className="mini-right">
+                    <InvoiceLinks businessId={business.id} attachments={e.attachments} compact />
+                    <span className="num">{fmt(e.amount)}</span>
+                  </span>
                 </li>
               ))}
             </ul>
