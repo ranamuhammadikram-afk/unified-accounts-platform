@@ -6,6 +6,7 @@ import * as XLSX from "xlsx";
 import { api } from "../api";
 import { PageHead, Figure, TypeTag, Icon } from "../components/ui.jsx";
 import { fmt, thisMonthStr, niceMonth, niceDate } from "../format.js";
+import { EntryDetail, InvoiceLinks, PAID_BY_LABEL } from "../components/invoices.jsx";
 import { pdfHeader, pdfSectionTitle, pdfFooter, tableStyle } from "../pdfBrand.js";
 
 const TYPE_LABEL = { fixed_cost: "Fixed cost", salary: "Salary" };
@@ -33,11 +34,35 @@ function fixedSalaryDetail(entries) {
   return (entries || [])
     .filter((e) => e.type === "fixed_cost" || e.type === "salary")
     .map((e) => ({
+      entry: e,
       date: entryDate(e),
       type: TYPE_LABEL[e.type] || e.type,
-      detail: e.fixed_cost_type || "—",
+      detail: e.fixed_cost_type ? e.fixed_cost_type[0].toUpperCase() + e.fixed_cost_type.slice(1) : "—",
       amount: Number(e.amount),
       description: e.description || "—",
+      supplier: e.supplier_name || "",
+      invoiceNo: e.invoice_number || "",
+      paidBy: e.type === "fixed_cost" ? PAID_BY_LABEL[e.payment_method] || "" : "",
+      invoices: (e.attachments || []).length,
+      enteredBy: e.entered_by || "—",
+    }));
+}
+
+// Every expense (purchase) of the month with what was bought, from whom, the invoice number,
+// how it was paid and whether the purchase invoice is attached.
+function expenseDetail(entries) {
+  return (entries || [])
+    .filter((e) => e.type === "expense")
+    .map((e) => ({
+      entry: e,
+      date: entryDate(e),
+      category: EXPENSE_CATEGORY_LABEL[e.expense_category] || "Other",
+      description: e.description || "—",
+      supplier: e.supplier_name || "",
+      invoiceNo: e.invoice_number || "",
+      paidBy: PAID_BY_LABEL[e.payment_method] || "",
+      amount: Number(e.amount),
+      invoices: (e.attachments || []).length,
       enteredBy: e.entered_by || "—",
     }));
 }
@@ -165,15 +190,48 @@ export default function MonthlyReport() {
       body: dailyBody.length ? dailyBody : [["No entries this month.", "", "", "", "", "", ""]],
     });
 
+    const expenses = expenseDetail(data.entries);
+    y = pdfSectionTitle(doc, "Expense Detail", doc.lastAutoTable.finalY + 12);
+    doc.autoTable({
+      ...tableStyle({ columnStyles: { ...right(6), 0: { cellWidth: 20 }, 2: { cellWidth: 46 } }, styles: { fontSize: 8, cellPadding: 2 } }),
+      startY: y + 2,
+      head: [["Date", "Category", "Description", "Supplier", "Invoice no.", "Paid by", `Amount (${currency})`, "Inv."]],
+      body: expenses.length
+        ? expenses.map((d) => [
+            niceDate(d.date),
+            d.category,
+            d.description,
+            d.supplier,
+            d.invoiceNo,
+            d.paidBy,
+            fmt(d.amount),
+            d.invoices ? "Yes" : "",
+          ])
+        : [["No expenses this month.", "", "", "", "", "", "", ""]],
+      foot: expenses.length
+        ? [["Total", "", "", "", "", "", fmt(expenses.reduce((s, d) => s + d.amount, 0)), ""]]
+        : undefined,
+      footStyles: { fillColor: [244, 236, 221], textColor: [22, 58, 47], fontStyle: "bold" },
+    });
+
     const detail = fixedSalaryDetail(data.entries);
     y = pdfSectionTitle(doc, "Fixed Cost, Salary & Maintenance Detail", doc.lastAutoTable.finalY + 12);
     doc.autoTable({
-      ...tableStyle({ columnStyles: right(3) }),
+      ...tableStyle({ columnStyles: { ...right(5), 0: { cellWidth: 20 } }, styles: { fontSize: 8, cellPadding: 2 } }),
       startY: y + 2,
-      head: [["Date", "Type", "Detail", `Amount (${currency})`, "Description", "Entered by"]],
+      head: [["Date", "Type", "Detail", "Supplier", "Invoice no.", `Amount (${currency})`, "Description", "Entered by"]],
       body: detail.length
-        ? detail.map((d) => [niceDate(d.date), d.type, d.detail, fmt(d.amount), d.description, d.enteredBy])
-        : [["No fixed cost or salary entries this month.", "", "", "", "", ""]],
+        ? detail.map((d) => [
+            niceDate(d.date),
+            d.type,
+            d.detail,
+            d.supplier,
+            d.invoiceNo,
+            fmt(d.amount),
+            d.description,
+            d.enteredBy,
+          ])
+        : [["No fixed cost or salary entries this month.", "", "", "", "", "", "", ""]],
     });
 
     pdfFooter(doc);
@@ -228,21 +286,62 @@ export default function MonthlyReport() {
     const dailySheet = XLSX.utils.aoa_to_sheet([dailyHeader, ...dailyRows]);
     dailySheet["!cols"] = [{ wch: 12 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
 
+    const expenses = expenseDetail(data.entries);
+    const expenseSheet = XLSX.utils.aoa_to_sheet([
+      ["Date", "Category", "Description", "Supplier", "Invoice no.", "Paid by", `Amount (${currency})`, "Invoice attached", "Entered by"],
+      ...expenses.map((d) => [
+        d.date,
+        d.category,
+        d.description,
+        d.supplier,
+        d.invoiceNo,
+        d.paidBy,
+        d.amount,
+        d.invoices ? `Yes (${d.invoices})` : "",
+        d.enteredBy,
+      ]),
+    ]);
+    expenseSheet["!cols"] = [{ wch: 12 }, { wch: 13 }, { wch: 44 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }];
+
     const detail = fixedSalaryDetail(data.entries);
-    const detailHeader = ["Date", "Type", "Detail", `Amount (${currency})`, "Description", "Entered by"];
-    const detailRows = detail.map((d) => [d.date, d.type, d.detail, d.amount, d.description, d.enteredBy]);
+    const detailHeader = [
+      "Date",
+      "Type",
+      "Detail",
+      "Supplier",
+      "Invoice no.",
+      "Paid by",
+      `Amount (${currency})`,
+      "Description",
+      "Invoice attached",
+      "Entered by",
+    ];
+    const detailRows = detail.map((d) => [
+      d.date,
+      d.type,
+      d.detail,
+      d.supplier,
+      d.invoiceNo,
+      d.paidBy,
+      d.amount,
+      d.description,
+      d.invoices ? `Yes (${d.invoices})` : "",
+      d.enteredBy,
+    ]);
     const detailSheet = XLSX.utils.aoa_to_sheet([detailHeader, ...detailRows]);
-    detailSheet["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 14 }, { wch: 40 }, { wch: 16 }];
+    detailSheet["!cols"] = [{ wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 40 }, { wch: 16 }, { wch: 16 }];
 
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, summarySheet, "Summary");
     XLSX.utils.book_append_sheet(wb, pnlSheet, "Profit & Loss");
     XLSX.utils.book_append_sheet(wb, dailySheet, "Daily Breakdown");
+    XLSX.utils.book_append_sheet(wb, expenseSheet, "Expense Detail");
     XLSX.utils.book_append_sheet(wb, detailSheet, "Fixed Cost & Salary Detail");
     XLSX.writeFile(wb, `${business.slug}-monthly-${data.month}.xlsx`);
   }
 
   const detailRows = data ? fixedSalaryDetail(data.entries) : [];
+  const expenseRows = data ? expenseDetail(data.entries) : [];
   const pnl = data ? buildPnl(data.totals) : null;
 
   const t = data?.totals;
@@ -389,6 +488,66 @@ export default function MonthlyReport() {
 
           <section className="section">
             <div className="section-head">
+              <h2 className="section-title">Expense detail</h2>
+              <span className="section-note">
+                {expenseRows.length} {expenseRows.length === 1 ? "purchase" : "purchases"} ·{" "}
+                {expenseRows.filter((d) => d.invoices).length} with invoice
+              </span>
+            </div>
+            <div className="card flush">
+              {expenseRows.length === 0 ? (
+                <div className="empty">No expenses this month.</div>
+              ) : (
+                <div className="table-scroll table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Date</th>
+                        <th>Category</th>
+                        <th>Description</th>
+                        <th>Supplier / invoice</th>
+                        <th className="num">Amount</th>
+                        <th>Invoice</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {expenseRows.map((d) => (
+                        <tr key={d.entry.id}>
+                          <td data-label="Date" className="nowrap">{niceDate(d.date)}</td>
+                          <td data-label="Category">
+                            <TypeTag type="expense" label={d.category} />
+                          </td>
+                          <td className="desc" data-label="Description">{d.description}</td>
+                          <td data-label="Supplier / invoice">
+                            <span className="entry-detail">
+                              <span>{d.supplier || <span className="muted">—</span>}</span>
+                              <span className="detail-sub">
+                                {[d.invoiceNo && `Inv ${d.invoiceNo}`, d.paidBy].filter(Boolean).join(" · ")}
+                              </span>
+                            </span>
+                          </td>
+                          <td className="num strong" data-label="Amount">{fmt(d.amount)}</td>
+                          <td data-label="Invoice">
+                            <InvoiceLinks businessId={business.id} attachments={d.entry.attachments} />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr>
+                        <td colSpan={4}>Total expenses</td>
+                        <td className="num" data-label="Total">{fmt(expenseRows.reduce((s, d) => s + d.amount, 0))}</td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="section">
+            <div className="section-head">
               <h2 className="section-title">Fixed cost, salary &amp; maintenance detail</h2>
             </div>
             <div className="card flush">
@@ -403,7 +562,8 @@ export default function MonthlyReport() {
                         <th>Type</th>
                         <th>Detail</th>
                         <th className="num">Amount</th>
-                        <th>Note</th>
+                        <th>Description</th>
+                        <th>Invoice</th>
                         <th>Entered by</th>
                       </tr>
                     </thead>
@@ -414,9 +574,18 @@ export default function MonthlyReport() {
                           <td data-label="Type">
                             <TypeTag type={d.type === "Salary" ? "salary" : "fixed_cost"} label={d.type} />
                           </td>
-                          <td data-label="Detail" style={{ textTransform: "capitalize" }}>{d.detail}</td>
+                          <td data-label="Detail">
+                            <EntryDetail entry={d.entry} />
+                          </td>
                           <td className="num" data-label="Amount">{fmt(d.amount)}</td>
-                          <td className="desc" data-label="Note">{d.description}</td>
+                          <td className="desc" data-label="Description">{d.description}</td>
+                          <td data-label="Invoice">
+                            {d.entry.type === "fixed_cost" ? (
+                              <InvoiceLinks businessId={business.id} attachments={d.entry.attachments} />
+                            ) : (
+                              <span className="muted">—</span>
+                            )}
+                          </td>
                           <td data-label="Entered by">{d.enteredBy}</td>
                         </tr>
                       ))}
