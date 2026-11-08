@@ -103,12 +103,14 @@ function putObject(uploadUrl, content) {
  * Same shape as the earlier Dropbox backups, so old and new backup files are interchangeable.
  */
 async function buildBackup() {
-  const [businesses, users, roles, transactions, auditLog] = await Promise.all([
+  const [businesses, users, roles, transactions, auditLog, attachments] = await Promise.all([
     pool.query("SELECT * FROM businesses ORDER BY id"),
     pool.query("SELECT * FROM users ORDER BY id"),
     pool.query("SELECT * FROM user_business_roles ORDER BY id"),
     pool.query("SELECT * FROM transactions ORDER BY id"),
     pool.query("SELECT * FROM audit_log ORDER BY id"),
+    // Invoice records (the files themselves are already in Oracle storage).
+    pool.query("SELECT * FROM transaction_attachments ORDER BY id").catch(() => ({ rows: [] })),
   ]);
   return {
     exported_at: new Date().toISOString(),
@@ -117,6 +119,7 @@ async function buildBackup() {
     user_business_roles: roles.rows,
     transactions: transactions.rows,
     audit_log: auditLog.rows,
+    transaction_attachments: attachments.rows,
   };
 }
 
