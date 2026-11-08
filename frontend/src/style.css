@@ -513,3 +513,10 @@ input.code-input{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospac
   body{background:#fff;}
   .card, .figures{box-shadow:none;}
 }
+
+/* Owner backup card */
+.backup-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.backup-row p { max-width: 62ch; }
+@media (max-width: 640px) {
+  .backup-row { flex-direction: column; align-items: stretch; }
+}
