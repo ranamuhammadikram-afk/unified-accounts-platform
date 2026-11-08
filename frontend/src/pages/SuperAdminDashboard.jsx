@@ -35,6 +35,10 @@ export default function SuperAdminDashboard() {
   const [auditLoading, setAuditLoading] = useState(false);
   const [auditShown, setAuditShown] = useState(10);
 
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMsg, setBackupMsg] = useState("");
+  const [backupError, setBackupError] = useState("");
+
   const loadAggregate = useCallback(async () => {
     setAggLoading(true);
     setAggError("");
@@ -103,6 +107,30 @@ export default function SuperAdminDashboard() {
       refreshBusinesses();
     } catch (err) {
       setBizError(err.message || "Could not update business.");
+    }
+  }
+
+  async function downloadCompleteBackup() {
+    setBackupBusy(true);
+    setBackupMsg("");
+    setBackupError("");
+    try {
+      const blob = await api.blob("/api/backup/full");
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `unified-accounts-complete-backup-${todayStr()}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      const mb = blob.size / 1024 / 1024;
+      setBackupMsg(`Backup downloaded (${mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(blob.size / 1024))} KB`}). Keep it somewhere private.`);
+      loadAudit();
+    } catch (err) {
+      setBackupError(err.message || "Could not download the backup.");
+    } finally {
+      setBackupBusy(false);
     }
   }
 
@@ -336,6 +364,35 @@ export default function SuperAdminDashboard() {
 
         <section className="section">
           <div className="section-head">
+            <h2 className="section-title">Backup</h2>
+            <span className="section-note">Owner only</span>
+          </div>
+          <div className="card">
+            <div className="backup-row">
+              <div>
+                <h3 style={{ marginTop: 0 }}>Complete backup</h3>
+                <p className="muted" style={{ margin: 0 }}>
+                  Downloads one .zip file with all businesses, entries, users, the audit trail and every purchase invoice
+                  (photos and PDFs), to keep as a second copy on your computer. Automatic backups also go to Oracle
+                  storage every night.
+                </p>
+              </div>
+              <button className="btn" type="button" onClick={downloadCompleteBackup} disabled={backupBusy}>
+                <Icon name="download" /> {backupBusy ? "Preparing backup…" : "Download complete backup"}
+              </button>
+            </div>
+            {backupBusy && <div className="hint" style={{ marginTop: 10 }}>This can take a minute when there are many invoices.</div>}
+            {backupMsg && (
+              <div className="success-msg" role="status" style={{ marginTop: 12 }}>
+                {backupMsg}
+              </div>
+            )}
+            {backupError && <div className="error-msg" style={{ marginTop: 12 }}>{backupError}</div>}
+          </div>
+        </section>
+
+        <section className="section">
+          <div className="section-head">
             <h2 className="section-title">Recent activity</h2>
             <span className="section-note">All businesses</span>
           </div>
@@ -352,7 +409,8 @@ export default function SuperAdminDashboard() {
                     <li key={e.id}>
                       <span className={`bullet ${e.action}`} />
                       <span className="what">
-                        <strong>{humanize(e.action)}</strong> {humanize(e.entity_type)} #{e.entity_id} by{" "}
+                        <strong>{humanize(e.action)}</strong> {humanize(e.entity_type)}
+                        {e.entity_id ? ` #${e.entity_id}` : ""} by{" "}
                         {e.performed_by || "system"}
                         {e.business_name ? ` · ${e.business_name}` : ""}
                       </span>
