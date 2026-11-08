@@ -4,6 +4,10 @@ const { requireAuth, requireBusinessAccess } = require("../middleware/auth");
 
 const router = express.Router({ mergeParams: true });
 
+const ATTACHMENTS_SQL = `COALESCE((SELECT json_agg(json_build_object('id', a.id, 'file_name', a.file_name,
+     'content_type', a.content_type) ORDER BY a.id)
+   FROM transaction_attachments a WHERE a.transaction_id = t.id AND a.deleted_at IS NULL), '[]'::json)`;
+
 const EXPENSE_CATEGORIES = ["supplies", "utilities", "maintenance", "transport", "marketing", "other"];
 
 function emptyExpenseByCategory() {
@@ -53,7 +57,7 @@ router.get("/daily", requireAuth, requireBusinessAccess("viewer", (req) => req.p
     const date = req.query.date;
     if (!date) return res.status(400).json({ error: "date is required (YYYY-MM-DD)." });
     const { rows } = await pool.query(
-      `SELECT t.*, u.username AS entered_by FROM transactions t JOIN users u ON u.id = t.user_id
+      `SELECT t.*, u.username AS entered_by, ${ATTACHMENTS_SQL} AS attachments FROM transactions t JOIN users u ON u.id = t.user_id
        WHERE t.business_id = $1 AND t.occurred_on = $2 AND t.deleted_at IS NULL
        ORDER BY t.created_at`,
       [req.businessId, date]
@@ -71,7 +75,7 @@ router.get("/monthly", requireAuth, requireBusinessAccess("viewer", (req) => req
     const month = req.query.month;
     if (!month || !/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "month is required (YYYY-MM)." });
     const { rows } = await pool.query(
-      `SELECT t.*, u.username AS entered_by FROM transactions t JOIN users u ON u.id = t.user_id
+      `SELECT t.*, u.username AS entered_by, ${ATTACHMENTS_SQL} AS attachments FROM transactions t JOIN users u ON u.id = t.user_id
        WHERE t.business_id = $1 AND to_char(t.occurred_on, 'YYYY-MM') = $2 AND t.deleted_at IS NULL
        ORDER BY t.occurred_on, t.created_at`,
       [req.businessId, month]
