@@ -49,10 +49,17 @@ export function tableStyle(extra = {}) {
     },
     theme: "plain",
     headStyles: { fillColor: GREEN, textColor: 255, fontStyle: "bold", fontSize: 8.5, cellPadding: 2.6 },
-    styles: { fontSize: 9, cellPadding: 2.4, textColor: INK, lineColor: [231, 225, 213], lineWidth: { bottom: 0.2 } },
     alternateRowStyles: { fillColor: IVORY },
     margin: { left: 14, right: 14 },
     ...extra,
+    styles: {
+      fontSize: 9,
+      cellPadding: 2.4,
+      textColor: INK,
+      lineColor: [231, 225, 213],
+      lineWidth: { bottom: 0.2 },
+      ...(extra.styles || {}),
+    },
   };
 }
 
