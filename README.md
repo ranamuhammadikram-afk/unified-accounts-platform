@@ -191,6 +191,12 @@ below).
 
 ## 9. Backups
 
+The live setup is backed up to Oracle every night, and the owner can download a complete
+backup (.zip with all records and invoice files) from the owner overview page. See
+[RESTORE.md](RESTORE.md) for how to restore from either one with
+`backend/scripts/restore-backup.js`.
+
+For a self-hosted Docker setup you can also dump the database directly.
 Postgres data lives in the `db_data` Docker volume. To back it up:
 
 ```bash
