@@ -11,6 +11,9 @@ const aggregateRoutes = require("./routes/aggregate");
 const userRoutes = require("./routes/users");
 const auditRoutes = require("./routes/audit");
 const backupRoutes = require("./routes/backup");
+const attachmentRoutes = require("./routes/attachments");
+const { requireAuth } = require("./middleware/auth");
+const storage = require("./storage");
 const { scheduleNightlyBackup } = require("./jobs/nightlyBackup");
 
 const app = express();
@@ -34,11 +37,15 @@ app.use("/api/businesses/:businessId/users", userRoutes);
 app.use("/api/businesses/:businessId/audit", auditRoutes);
 app.use("/api/reports", aggregateRoutes);
 app.use("/api/backup", backupRoutes);
+app.use("/api/businesses/:businessId/attachments", attachmentRoutes);
+// Tells the app whether invoice uploads are available (never reveals the storage link itself).
+app.get("/api/storage/status", requireAuth, (req, res) => res.json({ invoices_enabled: storage.isConfigured() }));
 app.use("/api", auditRoutes.globalRouter);
 
 // Central error handler — keeps stack traces out of API responses.
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
+  if (err && err.type === "entity.too.large") return res.status(413).json({ error: "The file is larger than 10 MB." });
   console.error(err);
   res.status(500).json({ error: "Internal server error." });
 });
@@ -98,6 +105,46 @@ async function ensureSchema() {
     await pool.query(`CREATE INDEX IF NOT EXISTS idx_auth_tokens_lookup ON auth_tokens (purpose, token_hash)`);
     // eslint-disable-next-line no-console
     console.log("[schema] account security tables ready.");
+
+    // Expense details and purchase invoices: supplier, invoice number, "paid by" (cash, card or
+    // bank) for expenses and fixed costs, and a table of invoice files kept in Oracle storage.
+    await pool.query(`
+      ALTER TABLE transactions
+        ADD COLUMN IF NOT EXISTS supplier_name TEXT,
+        ADD COLUMN IF NOT EXISTS invoice_number TEXT
+    `);
+    await pool.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'transactions_payment_method_check' AND pg_get_constraintdef(oid) LIKE '%bank%'
+        ) THEN
+          ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_payment_method_check;
+          ALTER TABLE transactions ADD CONSTRAINT transactions_payment_method_check
+            CHECK (payment_method IN ('cash', 'card', 'bank') OR payment_method IS NULL);
+        END IF;
+      END $$;
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS transaction_attachments (
+        id             BIGSERIAL PRIMARY KEY,
+        transaction_id BIGINT NOT NULL REFERENCES transactions(id),
+        business_id    BIGINT NOT NULL REFERENCES businesses(id),
+        object_key     TEXT NOT NULL,
+        file_name      TEXT NOT NULL,
+        content_type   TEXT NOT NULL,
+        size_bytes     INTEGER NOT NULL,
+        uploaded_by    BIGINT NOT NULL REFERENCES users(id),
+        created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+        deleted_at     TIMESTAMPTZ
+      )
+    `);
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS idx_attachments_transaction ON transaction_attachments (transaction_id) WHERE deleted_at IS NULL`
+    );
+    // eslint-disable-next-line no-console
+    console.log(`[schema] expense details and invoice attachments ready (invoice storage ${storage.isConfigured() ? "on" : "off"}).`);
 
     // One-time spelling fix for the two original businesses. It only touches rows that still
     // carry an old spelling, so it does nothing once they're corrected or renamed by hand.
