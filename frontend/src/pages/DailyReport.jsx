@@ -6,19 +6,13 @@ import * as XLSX from "xlsx";
 import { api } from "../api";
 import { PageHead, Figure, TypeTag, Icon, TYPE_LABEL } from "../components/ui.jsx";
 import { fmt, todayStr, niceDate } from "../format.js";
+import { EntryDetail, InvoiceLinks, entryDetailText, PAID_BY_LABEL } from "../components/invoices.jsx";
 import { pdfHeader, pdfSectionTitle, pdfFooter, tableStyle } from "../pdfBrand.js";
 
-const EXPENSE_CATEGORY_LABEL = {
-  supplies: "Supplies",
-  utilities: "Utilities",
-  maintenance: "Maintenance",
-  transport: "Transport",
-  marketing: "Marketing",
-  other: "Other",
-};
-
+// "Supplies — Al Othaim · Inv 7781 · Bank transfer" for exports.
 function detailOf(e) {
-  return e.payment_method || e.fixed_cost_type || (e.expense_category && EXPENSE_CATEGORY_LABEL[e.expense_category]) || "";
+  const { main, sub } = entryDetailText(e);
+  return [main, sub].filter(Boolean).join(" — ");
 }
 
 export default function DailyReport() {
@@ -112,22 +106,33 @@ export default function DailyReport() {
 
     const entriesHeader = [
       "Type",
-      "Detail",
+      "Category",
       `Cash Sale (${currency})`,
       `Card Sale (${currency})`,
       `Amount (${currency})`,
       "Description",
+      "Supplier",
+      "Invoice no.",
+      "Paid by",
+      "Invoice attached",
       "Entered by",
     ];
-    const entriesRows = data.entries.map((e) => [
-      TYPE_LABEL[e.type] || e.type,
-      detailOf(e),
-      e.type === "sales" && e.payment_method === "cash" ? Number(e.amount) : "",
-      e.type === "sales" && e.payment_method === "card" ? Number(e.amount) : "",
-      e.type !== "sales" ? Number(e.amount) : "",
-      e.description || "",
-      e.entered_by,
-    ]);
+    const entriesRows = data.entries.map((e) => {
+      const purchase = e.type === "expense" || e.type === "fixed_cost";
+      return [
+        TYPE_LABEL[e.type] || e.type,
+        entryDetailText(e).main,
+        e.type === "sales" && e.payment_method === "cash" ? Number(e.amount) : "",
+        e.type === "sales" && e.payment_method === "card" ? Number(e.amount) : "",
+        e.type !== "sales" ? Number(e.amount) : "",
+        e.description || "",
+        e.supplier_name || "",
+        e.invoice_number || "",
+        purchase ? PAID_BY_LABEL[e.payment_method] || "" : "",
+        e.attachments && e.attachments.length ? `Yes (${e.attachments.length})` : "",
+        e.entered_by,
+      ];
+    });
     const entriesSheet = XLSX.utils.aoa_to_sheet([entriesHeader, ...entriesRows]);
     entriesSheet["!cols"] = [
       { wch: 12 },
@@ -135,7 +140,11 @@ export default function DailyReport() {
       { wch: 14 },
       { wch: 14 },
       { wch: 14 },
-      { wch: 30 },
+      { wch: 34 },
+      { wch: 22 },
+      { wch: 14 },
+      { wch: 14 },
+      { wch: 16 },
       { wch: 16 },
     ];
 
@@ -197,7 +206,8 @@ export default function DailyReport() {
                         <th className="num">Cash sale</th>
                         <th className="num">Card sale</th>
                         <th className="num">Amount</th>
-                        <th>Note</th>
+                        <th>Description</th>
+                        <th>Invoice</th>
                         <th>Entered by</th>
                       </tr>
                     </thead>
@@ -207,8 +217,8 @@ export default function DailyReport() {
                           <td data-label="Type">
                             <TypeTag type={e.type} />
                           </td>
-                          <td data-label="Detail" style={{ textTransform: "capitalize" }}>
-                            {detailOf(e) || <span className="muted">—</span>}
+                          <td data-label="Detail">
+                            <EntryDetail entry={e} />
                           </td>
                           <td className="num" data-label="Cash sale">
                             {e.type === "sales" && e.payment_method === "cash" ? fmt(e.amount) : ""}
@@ -219,8 +229,11 @@ export default function DailyReport() {
                           <td className="num" data-label="Amount">
                             {e.type !== "sales" ? fmt(e.amount) : ""}
                           </td>
-                          <td className="desc" data-label="Note">
+                          <td className="desc" data-label="Description">
                             {e.description || <span className="muted">—</span>}
+                          </td>
+                          <td data-label="Invoice">
+                            <InvoiceLinks businessId={business.id} attachments={e.attachments} />
                           </td>
                           <td data-label="Entered by">{e.entered_by}</td>
                         </tr>
@@ -232,7 +245,7 @@ export default function DailyReport() {
                         <td className="num" data-label="Cash sale">{fmt(t.salesCash)}</td>
                         <td className="num" data-label="Card sale">{fmt(t.salesCard)}</td>
                         <td className="num" data-label="Outflow">{fmt(t.outflow)}</td>
-                        <td colSpan={2}></td>
+                        <td colSpan={3}></td>
                       </tr>
                     </tfoot>
                   </table>
